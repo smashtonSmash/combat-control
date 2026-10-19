@@ -7,7 +7,7 @@ export const sampleCharacters = (): Character[] => [
     id: 'sample-thorin', sample: true, name: 'Thorin', cls: 'Fighter', level: 3, race: 'Mountain Dwarf',
     abilities: { str: 16, dex: 12, con: 16, int: 10, wis: 12, cha: 8 },
     ac: 12, armor: 'Purple Padded Armor', purse: { gold: 12, silver: 7 }, maxHp: 31, initMod: 1,
-    armorId: 'padded', armorTier: 'purple',
+    armorId: 'padded', armorTier: 'purple', tierV: 2,
     traits: [
       { id: uid(), name: 'Dwarven Resilience', damageTypes: ['poison'], effect: 'resistance',
         note: 'Resistance to poison damage; advantage on saves vs poison.' },
@@ -38,10 +38,10 @@ export const extraSamples = (): Character[] => [
   {
     id: 'sample-kael', sample: true, name: 'Kael', cls: 'Ranger', level: 5, race: 'Half-Elf',
     abilities: { str: 12, dex: 16, con: 14, int: 10, wis: 14, cha: 10 },
-    ac: 14, armor: 'Mythic Studded Leather Armor', armorId: 'studded', armorTier: 'mythic', maxHp: 44, initMod: 3,
+    ac: 14, armor: 'Legendary Studded Leather Armor', armorId: 'studded', armorTier: 'legendary', tierV: 2, maxHp: 44, initMod: 3,
     purse: { gold: 40, silver: 15 }, traits: [],
     attacks: [{ id: uid(), name: 'Longbow', toHit: 7, damage: '1d8+3', damageType: 'piercing' }],
-    notes: 'SAMPLE character in Mythic Studded Leather.',
+    notes: 'SAMPLE character in Legendary Studded Leather.',
   },
   {
     id: 'sample-vex', sample: true, name: 'Vex', cls: 'Rogue', level: 3, race: 'Tiefling',
@@ -60,7 +60,7 @@ export function characterToCombatant(c: Character): Combatant {
     id: uid(), side: 'party', name: c.name, ac: c.ac, armor: c.armor, maxHp: c.maxHp, hp: Math.min(c.currentHp ?? c.maxHp, c.maxHp),
     initMod: c.initMod, initiative: null, traits: c.traits, attacks: c.attacks, conditions: [],
     characterId: c.id, sample: c.sample,
-    armorId: c.armorId, armorTier: c.armorTier, underId: c.underId, underTier: c.underTier, prof: charProf(c),
+    armorId: c.armorId, armorTier: c.armorTier, underId: c.underId, underTier: c.underTier, prof: charProf(c), tierV: 2,
   }
 }
 

@@ -64,7 +64,7 @@ function CharacterSheet({ c, isNew, onClose, onSave, onDelete }: {
     const ac = armorAc(n, abilityMod(n.abilities.dex))
     return { ...n, ...(ac !== null && !n.acManual ? { ac } : {}), ...(n.armorId ? { armor: armorLabel(n) } : {}) }
   }
-  const set = (p: Partial<Character>) => setD((cur) => recalc({ ...cur, ...p }))
+  const set = (p: Partial<Character>) => setD((cur) => recalc({ ...cur, ...p, tierV: 2 }))
   return (
     <Sheet open onClose={onClose} tall title={isNew ? 'New character' : d.name || 'Character'}
       footer={<button className="btn big primary" disabled={!d.name.trim()} onClick={() => onSave(d)}>Save character</button>}>
@@ -147,7 +147,7 @@ function ArmorPicker({ d, set }: { d: Character; set: (p: Partial<Character>) =>
           </ul>
           <div className="mini-label">Under-layer (only under medium/heavy armor)</div>
           {def.category === 'light'
-            ? <div className="small muted">Not available with light armor. Only Mythic Padded qualifies as an under-layer.</div>
+            ? <div className="small muted">Not available with light armor. Only Legendary/Mythic Padded qualify as an under-layer.</div>
             : <div className="chips-row wrap">
                 <button className={'chip ' + (!d.underId ? 'on' : '')} onClick={() => set({ underId: undefined, underTier: undefined })}>None</button>
                 {unders.map(({ a, t }) => <button key={a.id + t} className={'chip ' + (d.underId === a.id && d.underTier === t ? 'on' : '')} onClick={() => set({ underId: a.id, underTier: t })}>{TIER_SHORT[t]} {a.name}</button>)}

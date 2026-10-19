@@ -1,20 +1,30 @@
 // Homebrew armor catalog + rarity tiers. Add medium/heavy armor by appending to ARMOR_CATALOG.
 import type { DamageType } from './types'
 
-export const TIERS = ['green', 'blue', 'purple', 'mythic'] as const
+export const TIERS = ['green', 'blue', 'purple', 'legendary', 'mythic'] as const
 export type Tier = (typeof TIERS)[number]
 
-/** Mythic color is TBD — change it here and it updates everywhere. */
-export const MYTHIC_COLOR = '#f08a2a'
-export const TIER_COLORS: Record<Tier, string> = { green: '#4fbf63', blue: '#4a8fe7', purple: '#a35de0', mythic: MYTHIC_COLOR }
-export const TIER_LABELS: Record<Tier, string> = { green: 'Green · Standard', blue: 'Blue · Rare', purple: 'Purple · Ultra rare', mythic: 'Mythic' }
-export const TIER_SHORT: Record<Tier, string> = { green: 'Green', blue: 'Blue', purple: 'Purple', mythic: 'Mythic' }
+/** Tier colors — change here and they update everywhere. */
+export const LEGENDARY_COLOR = '#f08a2a'
+export const MYTHIC_COLOR = '#e5383b'
+export const TIER_COLORS: Record<Tier, string> = { green: '#4fbf63', blue: '#4a8fe7', purple: '#a35de0', legendary: LEGENDARY_COLOR, mythic: MYTHIC_COLOR }
+export const TIER_LABELS: Record<Tier, string> = { green: 'Green · Standard', blue: 'Blue · Rare', purple: 'Purple · Ultra rare', legendary: 'Legendary', mythic: 'Mythic' }
+export const TIER_SHORT: Record<Tier, string> = { green: 'Green', blue: 'Blue', purple: 'Purple', legendary: 'Legendary', mythic: 'Mythic' }
+
+/** Data version: v2 = tier 'mythic' means the new red top tier. Older data's 'mythic' is now 'legendary'. */
+export const TIER_VERSION = 2
+export function migrateTiers<T extends ArmorFields>(x: T): T {
+  if (!x || x.tierV === TIER_VERSION) return x
+  const fix = (t?: Tier) => ((t as string) === 'mythic' ? 'legendary' : t)
+  return { ...x, armorTier: fix(x.armorTier), underTier: fix(x.underTier), tierV: TIER_VERSION,
+    ...('armor' in x && typeof (x as { armor?: unknown }).armor === 'string' ? { armor: ((x as unknown as { armor: string }).armor).replace(/^Mythic /, 'Legendary ') } : {}) }
+}
 
 export type ArmorCategory = 'light' | 'medium' | 'heavy'
 
 export type ArmorEffect =
   | { kind: 'reduce'; type: DamageType; amount: number | 'prof'; replaces?: boolean }
-  | { kind: 'acVs'; types: DamageType[]; amount: number }
+  | { kind: 'acVs'; types: DamageType[]; amount: number; notUnder?: boolean } // notUnder: ignored when worn as an under-layer
   | { kind: 'deflectD6' }      // piercing hit: d6, on 6 no damage
   | { kind: 'shrugOff' }       // once per day: ignore one hit
   | { kind: 'underLayer'; ac: number } // may be worn under medium/heavy armor, +AC to that armor
@@ -43,7 +53,8 @@ export const ARMOR_CATALOG: ArmorDef[] = [
       green: [{ kind: 'reduce', type: 'bludgeoning', amount: 1 }],
       blue: [{ kind: 'reduce', type: 'bludgeoning', amount: 'prof', replaces: true }],
       purple: [{ kind: 'acVs', types: ['bludgeoning'], amount: 1 }],
-      mythic: [{ kind: 'underLayer', ac: 1 }],
+      legendary: [{ kind: 'underLayer', ac: 1 }],
+      mythic: [{ kind: 'acVs', types: ['bludgeoning'], amount: 3, notUnder: true }, { kind: 'acVs', types: ['slashing', 'piercing'], amount: -1, notUnder: true }],
     },
   },
   {
@@ -53,7 +64,8 @@ export const ARMOR_CATALOG: ArmorDef[] = [
       green: [{ kind: 'reduce', type: 'slashing', amount: 1 }],
       blue: [{ kind: 'reduce', type: 'slashing', amount: 'prof', replaces: true }],
       purple: [{ kind: 'acVs', types: ['slashing'], amount: 1 }],
-      mythic: [{ kind: 'shrugOff' }],
+      legendary: [{ kind: 'shrugOff' }],
+      mythic: [{ kind: 'acVs', types: ['slashing'], amount: 3 }, { kind: 'acVs', types: ['piercing', 'bludgeoning'], amount: -1 }],
     },
   },
   {
@@ -64,8 +76,9 @@ export const ARMOR_CATALOG: ArmorDef[] = [
       blue: [{ kind: 'acVs', types: ['piercing'], amount: 1 }],
       // Rule text says "+1 AC vs piercing" again at Purple; read as the same +1 restated (not stacking to +2) — see Mythic "+2 total".
       purple: [{ kind: 'deflectD6' }],
-      // DM ruling: Mythic does NOT keep Purple's d6 deflect. Blue +1 piercing + this = +2 vs piercing total.
-      mythic: [{ kind: 'acVs', types: ['slashing', 'piercing', 'bludgeoning'], amount: 1 }, { kind: 'dropDeflect' }],
+      // DM ruling: Legendary does NOT keep Purple's d6 deflect. Blue +1 piercing + this = +2 vs piercing total.
+      legendary: [{ kind: 'acVs', types: ['slashing', 'piercing', 'bludgeoning'], amount: 1 }, { kind: 'dropDeflect' }],
+      mythic: [{ kind: 'acVs', types: ['piercing'], amount: 3 }, { kind: 'acVs', types: ['slashing', 'bludgeoning'], amount: -1 }],
     },
   },
 ]
@@ -84,7 +97,7 @@ export interface ResolvedArmor {
   notes: string[]
 }
 
-export function resolveArmor(def: ArmorDef | undefined, tier: Tier | undefined, prof: number): ResolvedArmor {
+export function resolveArmor(def: ArmorDef | undefined, tier: Tier | undefined, prof: number, asUnder = false): ResolvedArmor {
   const r: ResolvedArmor = { reduce: {}, acVs: {}, deflectD6: false, shrugOff: false, underLayerAc: 0, lines: [], notes: [] }
   if (!def || !tier) return r
   r.notes = [...def.allTiers]
@@ -93,7 +106,7 @@ export function resolveArmor(def: ArmorDef | undefined, tier: Tier | undefined, 
       if (e.kind === 'reduce') {
         const n = e.amount === 'prof' ? prof : e.amount
         r.reduce[e.type] = e.replaces ? n : (r.reduce[e.type] ?? 0) + n
-      } else if (e.kind === 'acVs') for (const ty of e.types) r.acVs[ty] = (r.acVs[ty] ?? 0) + e.amount
+      } else if (e.kind === 'acVs') { if (!(asUnder && e.notUnder)) for (const ty of e.types) r.acVs[ty] = (r.acVs[ty] ?? 0) + e.amount }
       else if (e.kind === 'deflectD6') r.deflectD6 = true
       else if (e.kind === 'dropDeflect') r.deflectD6 = false
       else if (e.kind === 'shrugOff') r.shrugOff = true
@@ -102,7 +115,7 @@ export function resolveArmor(def: ArmorDef | undefined, tier: Tier | undefined, 
     }
   }
   for (const [ty, n] of Object.entries(r.reduce)) r.lines.push(`−${n} ${ty} damage taken`)
-  for (const [ty, n] of Object.entries(r.acVs)) r.lines.push(`+${n} AC vs ${ty}`)
+  for (const [ty, n] of Object.entries(r.acVs)) if (n) r.lines.push(`${n > 0 ? '+' : '−'}${Math.abs(n)} AC vs ${ty}`)
   if (r.deflectD6) r.lines.push('d6 deflect on piercing hits (6 = no damage)')
   if (r.shrugOff) r.lines.push('Shrug Off: ignore one hit per day (resets on long rest)')
   if (r.underLayerAc) r.lines.push(`Can be worn under medium/heavy armor (+${r.underLayerAc} AC)`)
@@ -120,6 +133,8 @@ export interface ArmorFields {
   underId?: string
   underTier?: Tier
   prof?: number
+  /** tier data version (see TIER_VERSION) */
+  tierV?: number
 }
 
 /** Combined effects of main armor + optional under-layer. */
@@ -128,7 +143,7 @@ export function combinedArmor(f: ArmorFields): ResolvedArmor {
   const main = resolveArmor(armorById(f.armorId), f.armorTier, prof)
   const mainDef = armorById(f.armorId)
   if (!mainDef || mainDef.category === 'light' || !canBeUnderLayer(f.underId, f.underTier)) return main
-  const under = resolveArmor(armorById(f.underId), f.underTier, prof)
+  const under = resolveArmor(armorById(f.underId), f.underTier, prof, true)
   const out: ResolvedArmor = { ...main, reduce: { ...main.reduce }, acVs: { ...main.acVs }, lines: [...main.lines], notes: [...main.notes] }
   for (const [ty, n] of Object.entries(under.reduce)) out.reduce[ty as DamageType] = Math.max(out.reduce[ty as DamageType] ?? 0, n!)
   for (const [ty, n] of Object.entries(under.acVs)) out.acVs[ty as DamageType] = (out.acVs[ty as DamageType] ?? 0) + n!

@@ -404,9 +404,9 @@ function AttackSheet({ attacker, target, onClose, onApply }: {
     const o = computeDamage(quick ? qNum : dmg, traits)
     const red = arm.reduce[type] ?? 0
     if (red && o.final > 0) { const n = Math.max(0, o.final - red); o.steps.push(`Armor (${target.armor}): −${red} ${type}: ${o.final} → ${n}`); o.final = n }
-    if (acBonus) o.steps.unshift(`Armor: +${acBonus} AC vs ${type} (AC ${effAc})`)
+    if (acBonus) o.steps.unshift(`Armor: ${fmtMod(acBonus)} AC vs ${type} (AC ${effAc})`)
     if (zeroBy === 'deflect') { o.steps.push(`Deflect d6 = 6: arrows/bolts snap, or a thick weapon (spear) is deflected and ${target.name} is pushed back 5 ft. No damage.`); o.final = 0 }
-    if (zeroBy === 'shrug') { o.steps.push(`Shrug Off (Mythic Leather, 1/day): ${target.name} shrugs off the hit. No damage.`); o.final = 0 }
+    if (zeroBy === 'shrug') { o.steps.push(`Shrug Off (Legendary Leather, 1/day): ${target.name} shrugs off the hit. No damage.`); o.final = 0 }
     return o
   })()
   const setDeflect = (n: number) => { setD6(n); setZeroBy(n === 6 ? 'deflect' : zeroBy === 'deflect' ? null : zeroBy) }
@@ -428,7 +428,7 @@ function AttackSheet({ attacker, target, onClose, onApply }: {
     else setDmgText('Could not read that dice — try like 1d8+3')
   }
 
-  const rollText = atk ? `d20 ${atk.d20.join('/')}${fmtMod(toHit)} = ${atk.total} vs AC ${effAc}${acBonus ? ` (+${acBonus} vs ${type})` : ''}` : ''
+  const rollText = atk ? `d20 ${atk.d20.join('/')}${fmtMod(toHit)} = ${atk.total} vs AC ${effAc}${acBonus ? ` (${fmtMod(acBonus)} vs ${type})` : ''}` : ''
 
   return (
     <Sheet open onClose={onClose} tall
@@ -472,13 +472,13 @@ function AttackSheet({ attacker, target, onClose, onApply }: {
         </div>
       )}
 
-      {!healing && (acBonus > 0 || target.armorTier) && (
-        <div className="small">🛡 <b>AC {effAc}</b>{acBonus ? ` (${target.ac} +${acBonus} vs ${type})` : ` vs ${type}`}</div>
+      {!healing && (acBonus !== 0 || target.armorTier) && (
+        <div className="small">🛡 <b>AC {effAc}</b>{acBonus ? ` (${target.ac} ${acBonus > 0 ? '+' : '−'}${Math.abs(acBonus)} vs ${type})` : ` vs ${type}`}</div>
       )}
-      {!healing && (acBonus > 0 || (arm.reduce[type] ?? 0) > 0 || canDeflect || arm.shrugOff) && (
+      {!healing && (acBonus !== 0 || (arm.reduce[type] ?? 0) > 0 || canDeflect || arm.shrugOff) && (
         <div className="reminder">
           <div className="reminder-head" style={target.armorTier ? { color: TIER_COLORS[target.armorTier] } : undefined}>🛡 {target.armor}</div>
-          {acBonus > 0 && <div className="reminder-item">+{acBonus} AC vs {DAMAGE_ICONS[type]} {type} → hits need <b>{effAc}</b></div>}
+          {acBonus !== 0 && <div className="reminder-item">{fmtMod(acBonus)} AC vs {DAMAGE_ICONS[type]} {type} → hits need <b>{effAc}</b></div>}
           {(arm.reduce[type] ?? 0) > 0 && <div className="reminder-item">Reduces {DAMAGE_ICONS[type]} {type} damage by <b>{arm.reduce[type]}</b> (after resistance, min 0)</div>}
           {canDeflect && (
             <div className="reminder-item">

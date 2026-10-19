@@ -2,6 +2,8 @@ import { createClient, type Session } from '@supabase/supabase-js'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from './supabaseConfig'
 import type { Character, Encounter } from './types'
+import { migrateTiers } from './armor'
+const normEnc = (e: Encounter | null) => (e ? { ...e, combatants: (e.combatants ?? []).map(migrateTiers) } : e)
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -62,8 +64,8 @@ export function useCampaign(cid: string | null) {
       supabase.from('members').select('user_id, role, display_name').eq('campaign_id', cid),
     ])
     if (c.error) { setStatus('error'); setError(c.error.message); return }
-    setChars((c.data ?? []).map((r) => ({ ...r, data: { ...(r.data as Character), id: r.id } })))
-    setEnc((e.data?.data as Encounter) ?? null)
+    setChars((c.data ?? []).map((r) => ({ ...r, data: migrateTiers({ ...(r.data as Character), id: r.id }) })))
+    setEnc(normEnc((e.data?.data as Encounter) ?? null))
     setMembers((m.data ?? []) as MemberInfo[])
   }, [cid])
 
@@ -75,11 +77,11 @@ export function useCampaign(cid: string | null) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'characters', filter: `campaign_id=eq.${cid}` }, (p) => {
         if (p.eventType === 'DELETE') { const id = (p.old as { id: string }).id; setChars((cs) => cs.filter((x) => x.id !== id)); return }
         const r = p.new as CloudChar
-        const row = { id: r.id, owner_id: r.owner_id, data: { ...r.data, id: r.id } }
+        const row = { id: r.id, owner_id: r.owner_id, data: migrateTiers({ ...r.data, id: r.id }) }
         setChars((cs) => (cs.some((x) => x.id === r.id) ? cs.map((x) => (x.id === r.id ? row : x)) : [...cs, row]))
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'encounters', filter: `campaign_id=eq.${cid}` }, (p) => {
-        if (p.eventType !== 'DELETE') setEnc((p.new as { data: Encounter }).data)
+        if (p.eventType !== 'DELETE') setEnc(normEnc((p.new as { data: Encounter }).data))
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'members', filter: `campaign_id=eq.${cid}` }, () => { load() })
       .subscribe((s) => { if (s === 'SUBSCRIBED') { setStatus('live'); load() } else if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT') setStatus('error') })

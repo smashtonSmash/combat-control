@@ -9,6 +9,7 @@ import Campaign from './screens/Campaign'
 import { listCampaigns, useCampaign, useSession, type CampaignInfo } from './cloud'
 import { CloudSheet } from './components/Cloud'
 import { uid } from './types'
+import { migrateTiers } from './armor'
 
 const emptyEncounter = (): Encounter => ({ combatants: [], round: 1, turnId: null, log: [] })
 const joinFromHash = () => { const m = location.hash.match(/join=([A-Za-z0-9]+)/); return m ? m[1].toUpperCase() : undefined }
@@ -81,7 +82,7 @@ export default function App() {
         if (!ch) return x
         const hp = typeof ch.currentHp === 'number' ? Math.min(ch.currentHp, ch.maxHp) : Math.min(x.hp, ch.maxHp)
         const nx = { ...x, name: ch.name, ac: ch.ac, armor: ch.armor, maxHp: ch.maxHp, hp, initMod: ch.initMod, traits: ch.traits, attacks: ch.attacks,
-          armorId: ch.armorId, armorTier: ch.armorTier, underId: ch.underId, underTier: ch.underTier, prof: charProf(ch) }
+          armorId: ch.armorId, armorTier: ch.armorTier, underId: ch.underId, underTier: ch.underTier, prof: charProf(ch), tierV: ch.tierV }
         if (JSON.stringify(nx) !== JSON.stringify(x)) { changed = true; return nx }
         return x
       })
@@ -109,6 +110,13 @@ export default function App() {
     for (const c of list) cloud.saveChar({ ...structuredClone(c), id: uid(), sample: undefined }, myId)
     setCloudOpen(false)
   }
+
+  // Tier rename: old 'mythic' → 'legendary' (idempotent, keyed by tierV)
+  useEffect(() => {
+    const needs = (x: { tierV?: number; armorTier?: string; underTier?: string }) => x.tierV !== 2 && (x.armorTier === 'mythic' || x.underTier === 'mythic')
+    setCharacters((cs) => (cs.some(needs) ? cs.map(migrateTiers) : cs))
+    setEncounter((e) => (e.combatants.some(needs) ? { ...e, combatants: e.combatants.map(migrateTiers) } : e))
+  }, [])
 
   // One-time migration for saves made before the armor catalog existed (only touches SAMPLE data).
   useEffect(() => {
@@ -164,7 +172,7 @@ export default function App() {
       ...e,
       combatants: e.combatants.map((x) => x.characterId === c.id
         ? { ...x, name: c.name, ac: c.ac, armor: c.armor, maxHp: c.maxHp, hp: Math.min(typeof c.currentHp === 'number' ? c.currentHp : x.hp, c.maxHp), initMod: c.initMod, traits: c.traits, attacks: c.attacks,
-            armorId: c.armorId, armorTier: c.armorTier, underId: c.underId, underTier: c.underTier, prof: charProf(c) }
+            armorId: c.armorId, armorTier: c.armorTier, underId: c.underId, underTier: c.underTier, prof: charProf(c), tierV: c.tierV }
         : x),
     }))
   }
