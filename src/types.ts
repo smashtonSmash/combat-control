@@ -1,3 +1,4 @@
+import type { ArmorFields } from './armor'
 export const DAMAGE_TYPES = [
   'bludgeoning', 'piercing', 'slashing',
   'fire', 'cold', 'lightning', 'thunder', 'acid', 'poison',
@@ -32,7 +33,9 @@ export interface Attack {
 
 export interface Abilities { str: number; dex: number; con: number; int: number; wis: number; cha: number }
 
-export interface Character {
+export interface Purse { gold: number; silver: number }
+
+export interface Character extends ArmorFields {
   id: string
   name: string
   cls: string
@@ -47,11 +50,16 @@ export interface Character {
   attacks: Attack[]
   notes: string
   sample?: boolean
+  /** true = AC typed by hand, don't auto-calc from armor */
+  acManual?: boolean
+  /** proficiency override; undefined = auto from level */
+  profOverride?: number
+  purse?: Purse
 }
 
 export type Side = 'party' | 'monster'
 
-export interface Combatant {
+export interface Combatant extends ArmorFields {
   id: string
   side: Side
   name: string
@@ -66,6 +74,7 @@ export interface Combatant {
   conditions: string[]
   characterId?: string
   sample?: boolean
+  shrugUsed?: boolean
 }
 
 export interface LogEntry {

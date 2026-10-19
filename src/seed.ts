@@ -1,14 +1,14 @@
 import type { Character, Combatant, Encounter, WikiPage } from './types'
 import { uid } from './types'
+import { profFromLevel } from './armor'
 
 export const sampleCharacters = (): Character[] => [
   {
     id: 'sample-thorin', sample: true, name: 'Thorin', cls: 'Fighter', level: 3, race: 'Mountain Dwarf',
     abilities: { str: 16, dex: 12, con: 16, int: 10, wis: 12, cha: 8 },
-    ac: 11, armor: 'Homebrew Padded Armor', maxHp: 31, initMod: 1,
+    ac: 12, armor: 'Purple Padded Armor', purse: { gold: 12, silver: 7 }, maxHp: 31, initMod: 1,
+    armorId: 'padded', armorTier: 'purple',
     traits: [
-      { id: uid(), name: 'Homebrew Padded Armor', damageTypes: ['bludgeoning'], effect: 'advantage',
-        note: 'Same AC as padded armor (11 + Dex), but the thick quilting gives advantage vs bludgeoning weapons.' },
       { id: uid(), name: 'Dwarven Resilience', damageTypes: ['poison'], effect: 'resistance',
         note: 'Resistance to poison damage; advantage on saves vs poison.' },
     ],
@@ -18,6 +18,7 @@ export const sampleCharacters = (): Character[] => [
     ],
     notes: 'SAMPLE character — delete any time from the banner or the Characters tab.\nSecond Wind: 1d10+3 heal, once per short rest.',
   },
+  ...extraSamples(),
   {
     id: 'sample-lyra', sample: true, name: 'Lyra', cls: 'Wizard', level: 3, race: 'High Elf',
     abilities: { str: 8, dex: 14, con: 13, int: 17, wis: 12, cha: 10 },
@@ -33,11 +34,33 @@ export const sampleCharacters = (): Character[] => [
   },
 ]
 
+export const extraSamples = (): Character[] => [
+  {
+    id: 'sample-kael', sample: true, name: 'Kael', cls: 'Ranger', level: 5, race: 'Half-Elf',
+    abilities: { str: 12, dex: 16, con: 14, int: 10, wis: 14, cha: 10 },
+    ac: 14, armor: 'Mythic Studded Leather Armor', armorId: 'studded', armorTier: 'mythic', maxHp: 44, initMod: 3,
+    purse: { gold: 40, silver: 15 }, traits: [],
+    attacks: [{ id: uid(), name: 'Longbow', toHit: 7, damage: '1d8+3', damageType: 'piercing' }],
+    notes: 'SAMPLE character in Mythic Studded Leather.',
+  },
+  {
+    id: 'sample-vex', sample: true, name: 'Vex', cls: 'Rogue', level: 3, race: 'Tiefling',
+    abilities: { str: 8, dex: 16, con: 12, int: 12, wis: 10, cha: 14 },
+    ac: 14, armor: 'Purple Studded Leather Armor', armorId: 'studded', armorTier: 'purple', maxHp: 21, initMod: 3,
+    purse: { gold: 3, silver: 22 }, traits: [],
+    attacks: [{ id: uid(), name: 'Rapier', toHit: 5, damage: '1d8+3', damageType: 'piercing' }],
+    notes: 'SAMPLE character in Purple Studded Leather (d6 deflect).',
+  },
+]
+
+export const charProf = (c: Character) => c.profOverride ?? profFromLevel(c.level)
+
 export function characterToCombatant(c: Character): Combatant {
   return {
     id: uid(), side: 'party', name: c.name, ac: c.ac, armor: c.armor, maxHp: c.maxHp, hp: c.maxHp,
     initMod: c.initMod, initiative: null, traits: c.traits, attacks: c.attacks, conditions: [],
     characterId: c.id, sample: c.sample,
+    armorId: c.armorId, armorTier: c.armorTier, underId: c.underId, underTier: c.underTier, prof: charProf(c),
   }
 }
 

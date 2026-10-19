@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Character, DiceRoll, Encounter, WikiPage } from './types'
 import { useStored } from './store'
-import { sampleCharacters, sampleEncounter, samplePages } from './seed'
+import { charProf, characterToCombatant, extraSamples, sampleCharacters, sampleEncounter, samplePages } from './seed'
 import Battle from './screens/Battle'
 import Characters from './screens/Characters'
 import Dice from './screens/Dice'
@@ -27,6 +27,30 @@ export default function App() {
   const [history, setHistory] = useStored<DiceRoll[]>('dice', () => [])
   const [pages, setPages] = useStored<WikiPage[]>('pages', samplePages)
   const [bannerHidden, setBannerHidden] = useStored<boolean>('sampleBannerHidden', () => false)
+
+  // One-time migration for saves made before the armor catalog existed (only touches SAMPLE data).
+  useEffect(() => {
+    if (localStorage.getItem('dnd.migrated.armor1')) return
+    localStorage.setItem('dnd.migrated.armor1', '1')
+    const isOldThorin = (t: { id?: string; armorId?: string }) => !t.armorId
+    const fixThorin = <T extends { traits: Character['traits']; armorId?: string }>(x: T): T => ({
+      ...x, ac: 12, armor: 'Purple Padded Armor', armorId: 'padded', armorTier: 'purple',
+      traits: x.traits.filter((t) => t.name !== 'Homebrew Padded Armor'),
+    })
+    let added: Character[] = []
+    setCharacters((cs) => {
+      if (!cs.some((c) => c.sample)) return cs
+      added = extraSamples().filter((x) => !cs.some((c) => c.id === x.id))
+      return [...cs.map((c) => (c.id === 'sample-thorin' && isOldThorin(c) ? { ...fixThorin(c), purse: c.purse ?? { gold: 12, silver: 7 } } : c)), ...added]
+    })
+    setEncounter((e) => {
+      if (!e.combatants.some((c) => c.sample)) return e
+      const cs = e.combatants.map((c) => (c.characterId === 'sample-thorin' && isOldThorin(c) ? { ...fixThorin(c), prof: 2 } : c))
+      const add = extraSamples().filter((x) => !cs.some((c) => c.characterId === x.id)).map(characterToCombatant)
+      return { ...e, combatants: [...cs.filter((c) => c.side === 'party'), ...add, ...cs.filter((c) => c.side !== 'party')] }
+    })
+    void added
+  }, [])
 
   useEffect(() => {
     localStorage.setItem('dnd.tab', tab)
@@ -56,7 +80,8 @@ export default function App() {
     setEncounter((e) => ({
       ...e,
       combatants: e.combatants.map((x) => x.characterId === c.id
-        ? { ...x, name: c.name, ac: c.ac, armor: c.armor, maxHp: c.maxHp, hp: Math.min(x.hp, c.maxHp), initMod: c.initMod, traits: c.traits, attacks: c.attacks }
+        ? { ...x, name: c.name, ac: c.ac, armor: c.armor, maxHp: c.maxHp, hp: Math.min(x.hp, c.maxHp), initMod: c.initMod, traits: c.traits, attacks: c.attacks,
+            armorId: c.armorId, armorTier: c.armorTier, underId: c.underId, underTier: c.underTier, prof: charProf(c) }
         : x),
     }))
   }

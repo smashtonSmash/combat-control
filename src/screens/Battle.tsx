@@ -6,6 +6,7 @@ import { fmtMod, rollDie, rollExpression } from '../dice'
 import { characterToCombatant } from '../seed'
 import { NumField, Segmented, Sheet, Stepper, TextField } from '../components/Sheet'
 import { DamageTypePicker, TraitEditor } from '../components/Editors'
+import { TIER_COLORS, TIER_SHORT, combinedArmor } from '../armor'
 
 type SetEnc = (f: (e: Encounter) => Encounter) => void
 
@@ -131,6 +132,11 @@ export default function Battle({ encounter, setEncounter, characters }: Props) {
     setEncounter((e) => ({ ...e, round: 1, turnId: null, log: [], combatants: e.combatants.map((c) => ({ ...c, initiative: null })) }))
   }
 
+  const longRest = () => {
+    if (!confirm('Long rest / new day? Resets once-per-day armor abilities (Shrug Off).')) return
+    setEncounter((e) => ({ ...e, combatants: e.combatants.map((c) => ({ ...c, shrugUsed: false })), log: log(e, '🌙 Long rest — daily armor abilities reset.', 'info') }))
+  }
+
   const applyAttack = (res: AttackResult) => {
     const a = byId(res.attackerId)!, t = byId(res.targetId)!
     setEncounter((e) => {
@@ -147,7 +153,7 @@ export default function Battle({ encounter, setEncounter, characters }: Props) {
         push(`${a.name} → ${t.name}: ${res.weapon || 'attack'} MISSES${res.rollText ? ` (${res.rollText})` : ''}`, 'miss')
       } else {
         const newHp = Math.max(0, t.hp - res.final)
-        cs = cs.map((c) => (c.id === t.id ? { ...c, hp: newHp } : c))
+        cs = cs.map((c) => (c.id === t.id ? { ...c, hp: newHp, shrugUsed: c.shrugUsed || !!res.shrug } : c))
         const extra = res.steps.length ? ` [${res.steps.join('; ')}]` : ''
         push(`${a.name} → ${t.name}: ${res.weapon || 'attack'} ${res.crit ? 'CRITS' : 'hits'} for ${res.final} ${res.type}${extra}${res.rollText ? ` (${res.rollText})` : ''}. HP ${t.hp}→${newHp}`, 'hit')
         if (newHp === 0 && t.hp > 0) push(t.side === 'party' ? `${t.name} is DOWN! Start death saves.` : `${t.name} is defeated!`, 'down')
@@ -191,6 +197,7 @@ export default function Battle({ encounter, setEncounter, characters }: Props) {
         <button className="btn" onClick={() => setInitOpen(true)}>🎲 Roll Initiative</button>
         <button className="btn primary" disabled={!order.length} onClick={nextTurn}>{turnId ? 'Next Turn ▶' : 'Start ▶'}</button>
         <button className="icon-btn" title="End combat" onClick={resetCombat}>⟲</button>
+        <button className="icon-btn" title="Long rest / new day" aria-label="Long rest / new day" onClick={longRest}>🌙</button>
       </div>
 
       <div className={'hint ' + (selC ? 'active' : '')}>
@@ -319,7 +326,10 @@ function CombatantCard({ c, isTurn, isSelected, isOver, isDragging, flash, onPoi
       {isTurn && <div className="turn-flag">TURN</div>}
       {c.sample && <div className="sample-tag">SAMPLE</div>}
       <div className="ccard-top">
-        <div className="ac-shield" title="Armor Class"><small>AC</small><b>{c.ac}</b></div>
+        <div className="ac-wrap">
+          <div className="ac-shield" title="Armor Class" style={c.armorTier ? { filter: `drop-shadow(0 0 5px ${TIER_COLORS[c.armorTier]})` } : undefined}><small>AC</small><b>{c.ac}</b></div>
+          {c.armorTier && <span className="ac-tier-dot" style={{ color: TIER_COLORS[c.armorTier] }}>◆{TIER_SHORT[c.armorTier]}</span>}
+        </div>
         <div className="ccard-name">
           <b>{c.name}</b>
           <span className="armor">{c.armor || '—'}</span>
@@ -353,7 +363,7 @@ function CombatantCard({ c, isTurn, isSelected, isOver, isDragging, flash, onPoi
 // ---------------- Attack sheet ----------------
 interface AttackResult {
   attackerId: string; targetId: string; weapon: string; hit: boolean; crit: boolean
-  type: DamageType; final: number; steps: string[]; rollText: string; heal?: boolean
+  type: DamageType; final: number; steps: string[]; rollText: string; heal?: boolean; shrug?: boolean
 }
 
 const MODE_KEY = 'cc.attackEntryMode'
@@ -383,7 +393,23 @@ function AttackSheet({ attacker, target, onClose, onApply }: {
 
   const traits = matchingTraits(target, type)
   const general = target.traits.filter((t) => !t.damageTypes.length)
-  const outcome = computeDamage(quick ? qNum : dmg, traits)
+  const arm = combinedArmor(target)
+  const acBonus = arm.acVs[type] ?? 0
+  const effAc = target.ac + acBonus
+  const [zeroBy, setZeroBy] = useState<null | 'shrug' | 'deflect'>(null)
+  const [d6, setD6] = useState<number | null>(null)
+  const canDeflect = arm.deflectD6 && type === 'piercing'
+  useEffect(() => { setD6(null); setZeroBy(null) }, [type])
+  const outcome = (() => {
+    const o = computeDamage(quick ? qNum : dmg, traits)
+    const red = arm.reduce[type] ?? 0
+    if (red && o.final > 0) { const n = Math.max(0, o.final - red); o.steps.push(`Armor (${target.armor}): −${red} ${type}: ${o.final} → ${n}`); o.final = n }
+    if (acBonus) o.steps.unshift(`Armor: +${acBonus} AC vs ${type} (AC ${effAc})`)
+    if (zeroBy === 'deflect') { o.steps.push(`Deflect d6 = 6: arrows/bolts snap, or a thick weapon (spear) is deflected and ${target.name} is pushed back 5 ft. No damage.`); o.final = 0 }
+    if (zeroBy === 'shrug') { o.steps.push(`Shrug Off (Mythic Leather, 1/day): ${target.name} shrugs off the hit. No damage.`); o.final = 0 }
+    return o
+  })()
+  const setDeflect = (n: number) => { setD6(n); setZeroBy(n === 6 ? 'deflect' : zeroBy === 'deflect' ? null : zeroBy) }
   const press = (k: string) => setQText((t) => k === '⌫' ? t.slice(0, -1) : k === 'C' ? '' : (t + k).replace(/^0+(?=\d)/, '').slice(0, 3))
 
   const pick = (a: Attack) => { setWeapon(a.name); setToHit(a.toHit); setExpr(a.damage); setType(a.damageType); setDmgText('') }
@@ -394,7 +420,7 @@ function AttackSheet({ attacker, target, onClose, onApply }: {
     setAtk({ d20: d, kept, total })
     const isCrit = kept === 20
     setCrit(isCrit)
-    setHit(kept !== 1 && (isCrit || total >= target.ac))
+    setHit(kept !== 1 && (isCrit || total >= effAc))
   }
   const rollDamage = (critical = crit) => {
     const r = rollExpression(expr, critical)
@@ -402,7 +428,7 @@ function AttackSheet({ attacker, target, onClose, onApply }: {
     else setDmgText('Could not read that dice — try like 1d8+3')
   }
 
-  const rollText = atk ? `d20 ${atk.d20.join('/')}${fmtMod(toHit)} = ${atk.total} vs AC ${target.ac}` : ''
+  const rollText = atk ? `d20 ${atk.d20.join('/')}${fmtMod(toHit)} = ${atk.total} vs AC ${effAc}${acBonus ? ` (+${acBonus} vs ${type})` : ''}` : ''
 
   return (
     <Sheet open onClose={onClose} tall
@@ -418,7 +444,7 @@ function AttackSheet({ attacker, target, onClose, onApply }: {
         ) : (
           <button className="btn big danger-fill" disabled={qNum <= 0 && !outcome.steps.length} onClick={() => onApply({
             attackerId: attacker.id, targetId: target.id, weapon, hit: true, crit: false, type,
-            final: outcome.final, steps: outcome.steps, rollText: '',
+            final: outcome.final, steps: outcome.steps, rollText: '', shrug: zeroBy === 'shrug',
           })}>
             {`Apply ${outcome.final} ${type} → ${target.name} (${target.hp}→${Math.max(0, target.hp - outcome.final)} HP)`}
           </button>
@@ -426,13 +452,13 @@ function AttackSheet({ attacker, target, onClose, onApply }: {
       ) : (
         <button className={'btn big ' + (hit ? 'danger-fill' : '')} onClick={() => onApply({
           attackerId: attacker.id, targetId: target.id, weapon, hit, crit, type,
-          final: outcome.final, steps: outcome.steps, rollText,
+          final: outcome.final, steps: outcome.steps, rollText, shrug: hit && zeroBy === 'shrug',
         })}>
           {hit ? `Apply ${outcome.final} ${type} damage → ${target.name} (${target.hp}→${Math.max(0, target.hp - outcome.final)} HP)` : 'Log miss'}
         </button>
       )}>
       <div className="target-summary">
-        <div className="ac-shield lg"><small>AC</small><b>{target.ac}</b></div>
+        <div className="ac-shield lg" style={target.armorTier ? { filter: `drop-shadow(0 0 6px ${TIER_COLORS[target.armorTier]})` } : undefined}><small>AC</small><b>{effAc}</b></div>
         <div><b>{target.name}</b><div className="muted small">{target.armor || 'no armor listed'} · {target.hp}/{target.maxHp} HP</div></div>
       </div>
 
@@ -446,6 +472,34 @@ function AttackSheet({ attacker, target, onClose, onApply }: {
         </div>
       )}
 
+      {!healing && (acBonus > 0 || target.armorTier) && (
+        <div className="small">🛡 <b>AC {effAc}</b>{acBonus ? ` (${target.ac} +${acBonus} vs ${type})` : ` vs ${type}`}</div>
+      )}
+      {!healing && (acBonus > 0 || (arm.reduce[type] ?? 0) > 0 || canDeflect || arm.shrugOff) && (
+        <div className="reminder">
+          <div className="reminder-head" style={target.armorTier ? { color: TIER_COLORS[target.armorTier] } : undefined}>🛡 {target.armor}</div>
+          {acBonus > 0 && <div className="reminder-item">+{acBonus} AC vs {DAMAGE_ICONS[type]} {type} → hits need <b>{effAc}</b></div>}
+          {(arm.reduce[type] ?? 0) > 0 && <div className="reminder-item">Reduces {DAMAGE_ICONS[type]} {type} damage by <b>{arm.reduce[type]}</b> (after resistance, min 0)</div>}
+          {canDeflect && (
+            <div className="reminder-item">
+              Piercing hit: roll a d6, on a <b>6</b> arrows/bolts snap (spears deflect, push 5 ft) — no damage.
+              <div className="row">
+                <button className="btn sm" onClick={() => setDeflect(rollDie(6))}>🎲 Roll d6 deflect</button>
+                {[1, 2, 3, 4, 5, 6].map((n) => <button key={n} className={'chip ' + (d6 === n ? 'on' : '')} onClick={() => setDeflect(n)}>{n}</button>)}
+              </div>
+              {d6 !== null && <div className={'atk-result ' + (d6 === 6 ? 'nat20' : 'miss')}>d6 = <b>{d6}</b> {d6 === 6 ? '— DEFLECTED! No damage.' : '— no deflect, damage applies.'}</div>}
+            </div>
+          )}
+          {arm.shrugOff && (
+            <div className="reminder-item">
+              Shrug Off (1/day): {target.shrugUsed ? <b>already used today</b> : (
+                <button className={'btn sm ' + (zeroBy === 'shrug' ? 'primary' : '')} onClick={() => setZeroBy(zeroBy === 'shrug' ? null : 'shrug')}>
+                  {zeroBy === 'shrug' ? '✓ Shrug Off (tap to undo)' : 'Use Shrug Off'}</button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
       {!healing && traits.length > 0 && (
         <div className="reminder">
           <div className="reminder-head">⚠️ Reminder</div>
@@ -458,6 +512,7 @@ function AttackSheet({ attacker, target, onClose, onApply }: {
           ))}
         </div>
       )}
+      {!healing && arm.notes.length > 0 && <div className="general-notes">{arm.notes.map((n) => <div key={n}>📝 {n}</div>)}</div>}
       {general.length > 0 && (
         <div className="general-notes">{general.map((t) => <div key={t.id}>📝 <b>{t.name}:</b> {t.note}</div>)}</div>
       )}
@@ -524,8 +579,8 @@ function AttackSheet({ attacker, target, onClose, onApply }: {
         </div>
         {atk && (
           <div className={'atk-result ' + (atk.kept === 20 ? 'nat20' : atk.kept === 1 ? 'nat1' : hit ? 'hit' : 'miss')} key={atk.total + '-' + atk.d20.join()}>
-            d20 [{atk.d20.join(', ')}] {mode !== 'normal' && `→ ${atk.kept}`} {fmtMod(toHit)} = <b>{atk.total}</b> vs AC {target.ac}
-            {' '}{atk.kept === 20 ? '— NAT 20! CRIT!' : atk.kept === 1 ? '— Nat 1, miss' : atk.total >= target.ac ? '— HIT' : '— MISS'}
+            d20 [{atk.d20.join(', ')}] {mode !== 'normal' && `→ ${atk.kept}`} {fmtMod(toHit)} = <b>{atk.total}</b> vs AC {effAc}
+            {' '}{atk.kept === 20 ? '— NAT 20! CRIT!' : atk.kept === 1 ? '— Nat 1, miss' : atk.total >= effAc ? '— HIT' : '— MISS'}
           </div>
         )}
         <div className="row">
