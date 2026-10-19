@@ -139,7 +139,11 @@ export default function Battle({ encounter, setEncounter, characters }: Props) {
       const push = (text: string, kind: LogEntry['kind']) => {
         entries = [{ id: uid(), round: e.round, text, kind, time: Date.now() }, ...entries].slice(0, 200)
       }
-      if (!res.hit) {
+      if (res.heal) {
+        const newHp = Math.min(t.maxHp, t.hp + res.final)
+        cs = cs.map((c) => (c.id === t.id ? { ...c, hp: newHp } : c))
+        push(`${a.name} heals ${t.name} for ${res.final}${res.weapon ? ` (${res.weapon})` : ''}. HP ${t.hp}→${newHp}`, 'heal')
+      } else if (!res.hit) {
         push(`${a.name} → ${t.name}: ${res.weapon || 'attack'} MISSES${res.rollText ? ` (${res.rollText})` : ''}`, 'miss')
       } else {
         const newHp = Math.max(0, t.hp - res.final)
@@ -150,7 +154,8 @@ export default function Battle({ encounter, setEncounter, characters }: Props) {
       }
       return { ...e, combatants: cs, log: entries }
     })
-    setFlash({ id: t.id, text: res.hit ? `−${res.final}` : 'MISS', kind: res.hit ? 'hit' : 'miss', key: Date.now() })
+    setFlash(res.heal ? { id: t.id, text: `+${res.final}`, kind: 'heal', key: Date.now() }
+      : { id: t.id, text: res.hit ? `−${res.final}` : 'MISS', kind: res.hit ? 'hit' : 'miss', key: Date.now() })
     setAttack(null)
   }
 
@@ -348,8 +353,11 @@ function CombatantCard({ c, isTurn, isSelected, isOver, isDragging, flash, onPoi
 // ---------------- Attack sheet ----------------
 interface AttackResult {
   attackerId: string; targetId: string; weapon: string; hit: boolean; crit: boolean
-  type: DamageType; final: number; steps: string[]; rollText: string
+  type: DamageType; final: number; steps: string[]; rollText: string; heal?: boolean
 }
+
+const MODE_KEY = 'cc.attackEntryMode'
+const loadEntryMode = (): 'quick' | 'full' => { try { return localStorage.getItem(MODE_KEY) === 'full' ? 'full' : 'quick' } catch { return 'quick' } }
 
 function AttackSheet({ attacker, target, onClose, onApply }: {
   attacker: Combatant; target: Combatant; onClose: () => void; onApply: (r: AttackResult) => void
@@ -365,10 +373,18 @@ function AttackSheet({ attacker, target, onClose, onApply }: {
   const [crit, setCrit] = useState(false)
   const [mode, setMode] = useState<'normal' | 'adv' | 'dis'>('normal')
   const [atk, setAtk] = useState<{ d20: number[]; kept: number; total: number } | null>(null)
+  const [entry, setEntryState] = useState<'quick' | 'full'>(loadEntryMode)
+  const setEntry = (m: 'quick' | 'full') => { setEntryState(m); try { localStorage.setItem(MODE_KEY, m) } catch { /* ignore */ } }
+  const [qAction, setQAction] = useState<'damage' | 'heal'>('damage')
+  const [qText, setQText] = useState('')
+  const qNum = parseInt(qText || '0') || 0
+  const quick = entry === 'quick'
+  const healing = quick && qAction === 'heal'
 
   const traits = matchingTraits(target, type)
   const general = target.traits.filter((t) => !t.damageTypes.length)
-  const outcome = computeDamage(dmg, traits)
+  const outcome = computeDamage(quick ? qNum : dmg, traits)
+  const press = (k: string) => setQText((t) => k === '⌫' ? t.slice(0, -1) : k === 'C' ? '' : (t + k).replace(/^0+(?=\d)/, '').slice(0, 3))
 
   const pick = (a: Attack) => { setWeapon(a.name); setToHit(a.toHit); setExpr(a.damage); setType(a.damageType); setDmgText('') }
   const rollAttack = () => {
@@ -391,20 +407,46 @@ function AttackSheet({ attacker, target, onClose, onApply }: {
   return (
     <Sheet open onClose={onClose} tall
       title={<span className="atk-title"><b>{attacker.name}</b> <span className="swords">⚔</span> <b>{target.name}</b></span>}
-      footer={
+      footer={quick ? (
+        healing ? (
+          <button className="btn big heal-fill" disabled={qNum <= 0} onClick={() => onApply({
+            attackerId: attacker.id, targetId: target.id, weapon, hit: true, crit: false, type, heal: true,
+            final: qNum, steps: [], rollText: '',
+          })}>
+            {`Heal ${qNum} → ${target.name} (${target.hp}→${Math.min(target.maxHp, target.hp + qNum)} HP)`}
+          </button>
+        ) : (
+          <button className="btn big danger-fill" disabled={qNum <= 0 && !outcome.steps.length} onClick={() => onApply({
+            attackerId: attacker.id, targetId: target.id, weapon, hit: true, crit: false, type,
+            final: outcome.final, steps: outcome.steps, rollText: '',
+          })}>
+            {`Apply ${outcome.final} ${type} → ${target.name} (${target.hp}→${Math.max(0, target.hp - outcome.final)} HP)`}
+          </button>
+        )
+      ) : (
         <button className={'btn big ' + (hit ? 'danger-fill' : '')} onClick={() => onApply({
           attackerId: attacker.id, targetId: target.id, weapon, hit, crit, type,
           final: outcome.final, steps: outcome.steps, rollText,
         })}>
           {hit ? `Apply ${outcome.final} ${type} damage → ${target.name} (${target.hp}→${Math.max(0, target.hp - outcome.final)} HP)` : 'Log miss'}
         </button>
-      }>
+      )}>
       <div className="target-summary">
         <div className="ac-shield lg"><small>AC</small><b>{target.ac}</b></div>
         <div><b>{target.name}</b><div className="muted small">{target.armor || 'no armor listed'} · {target.hp}/{target.maxHp} HP</div></div>
       </div>
 
-      {traits.length > 0 && (
+      <div className="entry-toggle">
+        <Segmented value={entry} onChange={setEntry} options={[{ value: 'quick', label: '✋ Quick (table dice)' }, { value: 'full', label: '🎲 Roll in app' }]} />
+      </div>
+
+      {quick && (
+        <div className="entry-toggle">
+          <Segmented value={qAction} onChange={setQAction} options={[{ value: 'damage', label: '🗡 Damage' }, { value: 'heal', label: '💚 Heal' }]} />
+        </div>
+      )}
+
+      {!healing && traits.length > 0 && (
         <div className="reminder">
           <div className="reminder-head">⚠️ Reminder</div>
           {traits.map((t) => (
@@ -420,6 +462,43 @@ function AttackSheet({ attacker, target, onClose, onApply }: {
         <div className="general-notes">{general.map((t) => <div key={t.id}>📝 <b>{t.name}:</b> {t.note}</div>)}</div>
       )}
 
+      {quick && (
+        <div className={'quick-pad ' + (healing ? 'heal' : '')}>
+          <div className="quick-display">
+            <small>{healing ? 'Healing' : 'Damage dealt'}</small>
+            <b>{qText || '0'}</b>
+            {!healing && outcome.steps.length > 0 && <span className="quick-final">→ {outcome.final}</span>}
+          </div>
+          <div className="keypad">
+            {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫'].map((k) => (
+              <button key={k} className={'key ' + (k === 'C' || k === '⌫' ? 'fn' : '')} onClick={() => press(k)}>{k}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!healing && (<>
+      <div className="mini-label">Damage type</div>
+      <DamageTypePicker value={[type]} onChange={(v) => setType(v[0])} />
+      {quick && outcome.steps.length > 0 && (
+        <div className="calc">
+          {outcome.steps.map((x) => <div key={x}>⚖️ {x}</div>)}
+          <div>Final damage: <b>{outcome.final}</b></div>
+        </div>
+      )}
+      </>)}
+
+      {quick && !healing && attacker.attacks.length > 0 && (
+        <div className="chips-row">
+          {attacker.attacks.map((a) => (
+            <button key={a.id} className={'chip ' + (weapon === a.name ? 'on' : '')} onClick={() => { setWeapon(a.name); setType(a.damageType) }}>
+              {DAMAGE_ICONS[a.damageType]} {a.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {!quick && (<>
       {attacker.attacks.length > 0 && (
         <>
           <div className="mini-label">{attacker.name}’s attacks</div>
@@ -433,9 +512,6 @@ function AttackSheet({ attacker, target, onClose, onApply }: {
         </>
       )}
       <TextField label="Weapon / attack" value={weapon} onChange={setWeapon} placeholder="e.g. Warhammer" />
-
-      <div className="mini-label">Damage type</div>
-      <DamageTypePicker value={[type]} onChange={(v) => setType(v[0])} />
 
       <div className="panel">
         <div className="row between">
@@ -475,6 +551,7 @@ function AttackSheet({ attacker, target, onClose, onApply }: {
           )}
         </div>
       )}
+      </>)}
     </Sheet>
   )
 }

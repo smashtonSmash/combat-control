@@ -275,3 +275,18 @@ h1, h2, h3, h4 { font-family: var(--serif); color: var(--gold2); letter-spacing:
 
 @media (min-width: 600px) { .columns { gap: 16px; } .ccard-name b { font-size: 17px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+
+/* Quick damage entry */
+.entry-toggle { margin: 10px 0; }
+.entry-toggle > * { width: 100%; }
+.quick-pad { background: rgba(0,0,0,.25); border: 1px solid rgba(217,180,90,.25); border-radius: 14px; padding: 10px; margin: 10px 0; }
+.quick-display { display: flex; align-items: baseline; gap: 10px; padding: 4px 8px 10px; }
+.quick-display small { opacity: .7; text-transform: uppercase; letter-spacing: .06em; font-size: 11px; }
+.quick-display b { font-size: 44px; line-height: 1; margin-left: auto; color: #f08a78; font-variant-numeric: tabular-nums; }
+.quick-pad.heal .quick-display b { color: #7fcf89; }
+.quick-final { font-size: 22px; font-weight: 700; color: var(--gold2, #f0d58a); }
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.keypad .key { min-height: 52px; border-radius: 12px; font-size: 22px; font-weight: 700; color: inherit;
+  background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03)); border: 1px solid rgba(255,255,255,.12); }
+.keypad .key:active { transform: scale(.96); background: rgba(217,180,90,.25); }
+.keypad .key.fn { font-size: 18px; opacity: .8; }
