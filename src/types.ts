@@ -55,6 +55,8 @@ export interface Character extends ArmorFields {
   /** proficiency override; undefined = auto from level */
   profOverride?: number
   purse?: Purse
+  /** current HP (synced with the DM's battle when playing online) */
+  currentHp?: number
 }
 
 export type Side = 'party' | 'monster'

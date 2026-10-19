@@ -35,7 +35,7 @@ export default function Characters({ characters, onSave, onDelete }: {
               <b className="char-name">{c.name || 'Unnamed'}</b>
               <div className="muted small">{[c.race, c.cls, c.level && `Lv ${c.level}`].filter(Boolean).join(' · ')}</div>
               {c.armorTier && <TierBadge tier={c.armorTier} />}
-              <div className="small">🛡 {c.armor || '—'} · ❤️ {c.maxHp} · ⚡ Init {fmtMod(c.initMod)}</div>
+              <div className="small">🛡 {c.armor || '—'} · ❤️ {c.currentHp ?? c.maxHp}/{c.maxHp} · ⚡ Init {fmtMod(c.initMod)}</div>
               {c.traits.length > 0 && (
                 <div className="badges">
                   {c.traits.map((t) => <span key={t.id} className={'badge trait effect-' + t.effect}>✦ {t.name || EFFECT_LABEL[t.effect]} {t.damageTypes.map((d) => DAMAGE_ICONS[d]).join('')}</span>)}
@@ -89,6 +89,7 @@ function CharacterSheet({ c, isNew, onClose, onSave, onDelete }: {
       <div className="grid3">
         <NumField label={d.armorId && !d.acManual ? 'AC (auto)' : 'AC'} value={d.ac} onChange={(v) => set({ ac: v, acManual: d.armorId ? true : d.acManual })} />
         <NumField label="Max HP" value={d.maxHp} onChange={(v) => set({ maxHp: v })} />
+        <NumField label="Current HP" value={d.currentHp ?? d.maxHp} onChange={(v) => set({ currentHp: v })} />
         <NumField label="Init mod" value={d.initMod} onChange={(v) => set({ initMod: v })} />
       </div>
       <button className="link small" onClick={() => set({ initMod: abilityMod(d.abilities.dex) })}>Use DEX modifier ({fmtMod(abilityMod(d.abilities.dex))}) for initiative</button>

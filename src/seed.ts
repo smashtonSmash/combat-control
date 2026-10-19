@@ -57,7 +57,7 @@ export const charProf = (c: Character) => c.profOverride ?? profFromLevel(c.leve
 
 export function characterToCombatant(c: Character): Combatant {
   return {
-    id: uid(), side: 'party', name: c.name, ac: c.ac, armor: c.armor, maxHp: c.maxHp, hp: c.maxHp,
+    id: uid(), side: 'party', name: c.name, ac: c.ac, armor: c.armor, maxHp: c.maxHp, hp: Math.min(c.currentHp ?? c.maxHp, c.maxHp),
     initMod: c.initMod, initiative: null, traits: c.traits, attacks: c.attacks, conditions: [],
     characterId: c.id, sample: c.sample,
     armorId: c.armorId, armorTier: c.armorTier, underId: c.underId, underTier: c.underTier, prof: charProf(c),
