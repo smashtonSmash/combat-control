@@ -27,7 +27,8 @@ export type ArmorEffect =
   | { kind: 'acVs'; types: DamageType[]; amount: number; notUnder?: boolean } // notUnder: ignored when worn as an under-layer
   | { kind: 'deflectD6' }      // piercing hit: d6, on 6 no damage
   | { kind: 'shrugOff' }       // once per day: ignore one hit
-  | { kind: 'underLayer'; ac: number } // may be worn under medium/heavy armor, +AC to that armor
+  | { kind: 'underLayer'; ac: number; vs?: Partial<Record<DamageType, number>>; onlyAc?: boolean } // worn under medium/heavy: +ac to that armor (+ extra per type); onlyAc = no other effects underneath; later tiers replace earlier
+  | { kind: 'resetAc' }         // flat AC tier: drop all earlier tiers' AC-vs-type bonuses
   | { kind: 'note'; text: string }
   | { kind: 'dropDeflect' }     // removes an earlier tier's d6 deflect
 
@@ -54,7 +55,9 @@ export const ARMOR_CATALOG: ArmorDef[] = [
       blue: [{ kind: 'reduce', type: 'bludgeoning', amount: 'prof', replaces: true }],
       purple: [{ kind: 'acVs', types: ['bludgeoning'], amount: 1 }],
       legendary: [{ kind: 'underLayer', ac: 1 }],
-      mythic: [{ kind: 'acVs', types: ['bludgeoning'], amount: 3, notUnder: true }, { kind: 'acVs', types: ['slashing', 'piercing'], amount: -1, notUnder: true }],
+      // Mythic AC is flat (replaces lower tiers' AC bonuses). Underneath: +2 vs bludgeoning, +1 vs everything else, AC only.
+      mythic: [{ kind: 'resetAc' }, { kind: 'acVs', types: ['bludgeoning'], amount: 3, notUnder: true }, { kind: 'acVs', types: ['slashing', 'piercing'], amount: -1, notUnder: true },
+        { kind: 'underLayer', ac: 1, vs: { bludgeoning: 1 }, onlyAc: true }],
     },
   },
   {
@@ -65,7 +68,7 @@ export const ARMOR_CATALOG: ArmorDef[] = [
       blue: [{ kind: 'reduce', type: 'slashing', amount: 'prof', replaces: true }],
       purple: [{ kind: 'acVs', types: ['slashing'], amount: 1 }],
       legendary: [{ kind: 'shrugOff' }],
-      mythic: [{ kind: 'acVs', types: ['slashing'], amount: 3 }, { kind: 'acVs', types: ['piercing', 'bludgeoning'], amount: -1 }],
+      mythic: [{ kind: 'resetAc' }, { kind: 'acVs', types: ['slashing'], amount: 3 }, { kind: 'acVs', types: ['piercing', 'bludgeoning'], amount: -1 }],
     },
   },
   {
@@ -78,7 +81,7 @@ export const ARMOR_CATALOG: ArmorDef[] = [
       purple: [{ kind: 'deflectD6' }],
       // DM ruling: Legendary does NOT keep Purple's d6 deflect. Blue +1 piercing + this = +2 vs piercing total.
       legendary: [{ kind: 'acVs', types: ['slashing', 'piercing', 'bludgeoning'], amount: 1 }, { kind: 'dropDeflect' }],
-      mythic: [{ kind: 'acVs', types: ['piercing'], amount: 3 }, { kind: 'acVs', types: ['slashing', 'bludgeoning'], amount: -1 }],
+      mythic: [{ kind: 'resetAc' }, { kind: 'acVs', types: ['piercing'], amount: 3 }, { kind: 'acVs', types: ['slashing', 'bludgeoning'], amount: -1 }],
     },
   },
 ]
@@ -93,12 +96,14 @@ export interface ResolvedArmor {
   deflectD6: boolean
   shrugOff: boolean
   underLayerAc: number
+  underVs: Partial<Record<DamageType, number>>
+  underOnlyAc: boolean
   lines: string[] // human-readable list of active effects
   notes: string[]
 }
 
 export function resolveArmor(def: ArmorDef | undefined, tier: Tier | undefined, prof: number, asUnder = false): ResolvedArmor {
-  const r: ResolvedArmor = { reduce: {}, acVs: {}, deflectD6: false, shrugOff: false, underLayerAc: 0, lines: [], notes: [] }
+  const r: ResolvedArmor = { reduce: {}, acVs: {}, deflectD6: false, shrugOff: false, underLayerAc: 0, underVs: {}, underOnlyAc: false, lines: [], notes: [] }
   if (!def || !tier) return r
   r.notes = [...def.allTiers]
   for (const t of TIERS.slice(0, TIERS.indexOf(tier) + 1)) {
@@ -110,7 +115,8 @@ export function resolveArmor(def: ArmorDef | undefined, tier: Tier | undefined, 
       else if (e.kind === 'deflectD6') r.deflectD6 = true
       else if (e.kind === 'dropDeflect') r.deflectD6 = false
       else if (e.kind === 'shrugOff') r.shrugOff = true
-      else if (e.kind === 'underLayer') r.underLayerAc += e.ac
+      else if (e.kind === 'underLayer') { r.underLayerAc = e.ac; r.underVs = e.vs ?? {}; r.underOnlyAc = !!e.onlyAc }
+      else if (e.kind === 'resetAc') r.acVs = {}
       else r.notes.push(e.text)
     }
   }
@@ -118,7 +124,7 @@ export function resolveArmor(def: ArmorDef | undefined, tier: Tier | undefined, 
   for (const [ty, n] of Object.entries(r.acVs)) if (n) r.lines.push(`${n > 0 ? '+' : '−'}${Math.abs(n)} AC vs ${ty}`)
   if (r.deflectD6) r.lines.push('d6 deflect on piercing hits (6 = no damage)')
   if (r.shrugOff) r.lines.push('Shrug Off: ignore one hit per day (resets on long rest)')
-  if (r.underLayerAc) r.lines.push(`Can be worn under medium/heavy armor (+${r.underLayerAc} AC)`)
+  if (r.underLayerAc) r.lines.push(`Can be worn under medium/heavy armor (+${r.underLayerAc} AC${Object.entries(r.underVs).map(([t, n]) => `, +${r.underLayerAc + n!} vs ${t}`).join('')}${r.underOnlyAc ? '; AC only' : ''})`)
   return r
 }
 
@@ -145,9 +151,13 @@ export function combinedArmor(f: ArmorFields): ResolvedArmor {
   if (!mainDef || mainDef.category === 'light' || !canBeUnderLayer(f.underId, f.underTier)) return main
   const under = resolveArmor(armorById(f.underId), f.underTier, prof, true)
   const out: ResolvedArmor = { ...main, reduce: { ...main.reduce }, acVs: { ...main.acVs }, lines: [...main.lines], notes: [...main.notes] }
-  for (const [ty, n] of Object.entries(under.reduce)) out.reduce[ty as DamageType] = Math.max(out.reduce[ty as DamageType] ?? 0, n!)
-  for (const [ty, n] of Object.entries(under.acVs)) out.acVs[ty as DamageType] = (out.acVs[ty as DamageType] ?? 0) + n!
-  out.lines.push(...under.lines.filter((l) => !l.startsWith('Can be worn')).map((l) => `Under-layer: ${l}`), `Under-layer: +${under.underLayerAc} AC`)
+  if (!under.underOnlyAc) {
+    for (const [ty, n] of Object.entries(under.reduce)) out.reduce[ty as DamageType] = Math.max(out.reduce[ty as DamageType] ?? 0, n!)
+    for (const [ty, n] of Object.entries(under.acVs)) out.acVs[ty as DamageType] = (out.acVs[ty as DamageType] ?? 0) + n!
+    out.lines.push(...under.lines.filter((l) => !l.startsWith('Can be worn')).map((l) => `Under-layer: ${l}`))
+  }
+  for (const [ty, n] of Object.entries(under.underVs)) out.acVs[ty as DamageType] = (out.acVs[ty as DamageType] ?? 0) + n!
+  out.lines.push(`Under-layer: +${under.underLayerAc} AC${Object.entries(under.underVs).map(([t, n]) => ` (+${under.underLayerAc + n!} vs ${t})`).join('')}`)
   return out
 }
 
