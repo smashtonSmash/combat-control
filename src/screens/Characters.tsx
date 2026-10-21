@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { Abilities, Character } from '../types'
+import type { Character } from '../types'
 import { DAMAGE_ICONS, uid } from '../types'
 import { abilityMod, fmtMod } from '../dice'
 import { EFFECT_LABEL } from '../combat'
@@ -12,8 +12,9 @@ import { ItemCard, ItemPicker } from '../components/Items'
 import { SpellsSection } from '../components/Spells'
 import { addItem, equip, removeItem, unequip, useItem } from '../inventory'
 import { FeatureEditor, OriginsPanel, SRC_ICON } from '../components/Origins'
-import { ABIL_KEYS, ABIL_NAMES, SKILLS, applyBonuses, baseAbilities, saveMod, skillMod, totalBonus } from '../origins'
+import { ABIL_KEYS, ABIL_NAMES, SKILLS, applyBonuses, saveMod, skillMod, totalBonus } from '../origins'
 import { Portrait, PortraitPicker } from '../components/Portrait'
+import { AbilityGenerator } from '../components/AbilityGen'
 import { KIND_ICON } from '../inventory'
 
 const blank = (): Character => ({
@@ -24,10 +25,10 @@ const blank = (): Character => ({
 
 export type GiveFn = (from: Character, toId: string, itemId: string) => Promise<boolean> | boolean
 
-export default function Characters({ characters, onSave, onDelete, giveTargets = [], onGive, customBudget = 3, onBudget }: {
+export default function Characters({ characters, onSave, onDelete, giveTargets = [], onGive, customBudget = 3, onBudget, allowReroll = true, onAllowReroll }: {
   characters: Character[]; onSave: (c: Character) => void; onDelete: (id: string) => void
   giveTargets?: { id: string; name: string }[]; onGive?: GiveFn
-  customBudget?: number; onBudget?: (n: number) => void
+  customBudget?: number; onBudget?: (n: number) => void; allowReroll?: boolean; onAllowReroll?: (v: boolean) => void
 }) {
   const [edit, setEdit] = useState<Character | null>(null)
   const [viewId, setViewId] = useState<string | null>(null)
@@ -46,6 +47,7 @@ export default function Characters({ characters, onSave, onDelete, giveTargets =
         <div className="panel">
           <Stepper label="Custom origin ability budget (DM)" value={customBudget} min={0} max={10} onChange={onBudget} />
           <div className="small muted">Points players allocate for Custom / non-SRD races and Custom backgrounds (max +2 per ability). Default +3.</div>
+          {onAllowReroll && <label className="row small"><input type="checkbox" checked={allowReroll} onChange={(e) => onAllowReroll(e.target.checked)} /> Allow “Reroll all” for 4d6 ability rolls (until scores are assigned)</label>}
         </div>
       )}
       {characters.length === 0 && <div className="empty">No characters yet. Tap <b>＋ New</b> to make your first sheet.</div>}
@@ -77,7 +79,7 @@ export default function Characters({ characters, onSave, onDelete, giveTargets =
           giveTargets={giveTargets.filter((t) => t.id !== viewing.id)} onGive={onGive} />
       )}
       {edit && (
-        <CharacterSheet c={edit} customBudget={customBudget} isNew={!characters.some((x) => x.id === edit.id)} onClose={() => setEdit(null)}
+        <CharacterSheet c={edit} customBudget={customBudget} allowReroll={allowReroll} isNew={!characters.some((x) => x.id === edit.id)} onClose={() => setEdit(null)}
           onSave={(c) => { onSave(c); setEdit(null); setViewId(c.id) }} onPersist={onSave}
           giveTargets={giveTargets.filter((t) => t.id !== edit.id)} onGive={onGive}
           onDelete={() => { if (confirm(`Delete ${edit.name || 'this character'}?`)) { onDelete(edit.id); setEdit(null) } }} />
@@ -86,11 +88,11 @@ export default function Characters({ characters, onSave, onDelete, giveTargets =
   )
 }
 
-const ABILS: (keyof Abilities)[] = ['str', 'dex', 'con', 'int', 'wis', 'cha']
 
-function CharacterSheet({ c, isNew, onClose, onSave, onDelete, onPersist, giveTargets, onGive, customBudget }: {
+
+function CharacterSheet({ c, isNew, onClose, onSave, onDelete, onPersist, giveTargets, onGive, customBudget, allowReroll }: {
   c: Character; isNew: boolean; onClose: () => void; onSave: (c: Character) => void; onDelete: () => void
-  onPersist: (c: Character) => void; giveTargets: { id: string; name: string }[]; onGive?: GiveFn; customBudget: number
+  onPersist: (c: Character) => void; giveTargets: { id: string; name: string }[]; onGive?: GiveFn; customBudget: number; allowReroll: boolean
 }) {
   const [d, setD] = useState(c)
   const [picking, setPicking] = useState(false)
@@ -125,17 +127,7 @@ function CharacterSheet({ c, isNew, onClose, onSave, onDelete, onPersist, giveTa
       <OriginsPanel d={d} setD={(n) => set(n)} customBudget={customBudget} />
       {!d.origin?.raceKey && !d.origin?.classKey && (d.race || d.cls) && <div className="small muted">Current: {[d.race, d.cls].filter(Boolean).join(' · ')} (pick from the lists to add traits and features)</div>}
       <div className="mini-label">Ability scores {Object.keys(bonus).some((k) => bonus[k as keyof typeof bonus]) && <span className="muted">(base + bonuses)</span>}</div>
-      <div className="abil-grid">
-        {ABILS.map((k) => (
-          <label key={k} className="abil">
-            <span>{k.toUpperCase()}</span>
-            <input inputMode="numeric" aria-label={`${k} base score`} value={String(baseAbilities(d)[k])}
-              onChange={(e) => set(applyBonuses({ ...d, baseAbilities: { ...baseAbilities(d), [k]: parseInt(e.target.value) || 0 } }))} />
-            {bonus[k] ? <small className="gold">+{bonus[k]} → {d.abilities[k]}</small> : null}
-            <b>{fmtMod(abilityMod(d.abilities[k]))}</b>
-          </label>
-        ))}
-      </div>
+      <AbilityGenerator d={d} allowReroll={allowReroll} setBase={(b, g) => set(applyBonuses({ ...d, baseAbilities: b, abilityGen: g }))} />
       <ArmorPicker d={d} set={set} />
       <div className="grid3">
         <NumField label={d.armorId && !d.acManual ? 'AC (auto)' : 'AC'} value={d.ac} onChange={(v) => set({ ac: v, acManual: d.armorId ? true : d.acManual })} />
@@ -271,6 +263,12 @@ function Inventory({ d, commit, giveTargets, onGive }: {
   const close = () => { setSel(null); setGiving(false) }
   return (
     <div className="panel">
+      {(d.effects ?? []).length > 0 && (
+        <div className="active-effects">
+          {(d.effects ?? []).map((e) => <span key={e.id} className="badge effect-badge" title={e.note}>✨ {e.name} <small>· {e.until === 'combat' ? 'this fight' : 'until long rest'}</small>
+            <button className="link small" aria-label={`End ${e.name}`} onClick={() => commit({ ...d, effects: (d.effects ?? []).filter((x) => x.id !== e.id) })}>✕</button></span>)}
+        </div>
+      )}
       {inv.length === 0 && <div className="small muted">Empty pack. Add items below, or the DM can drop loot to you.</div>}
       <div className="item-grid">
         {[...inv].sort((a, b) => Number(!!b.equipped) - Number(!!a.equipped)).map((x) => (
@@ -283,9 +281,11 @@ function Inventory({ d, commit, giveTargets, onGive }: {
           <b>{it.name}</b>{it.qty > 1 && <span className="muted"> ×{it.qty}</span>}
           {it.description && <div className="small muted spell-desc">{it.description}</div>}
           <div className="row">
-            {(it.kind === 'armor' || it.kind === 'weapon') && (it.equipped
+            {it.atForge && <span className="small muted">🔥 At the forge — the DM taps Ready when it's done.</span>}
+            {!it.atForge && (it.kind === 'armor' || it.kind === 'weapon') && (it.equipped
               ? <button className="btn sm" onClick={() => { commit(unequip(d, it.id)); setMsg(`Unequipped ${it.name}.`) }}>Unequip</button>
               : <button className="btn sm primary" onClick={() => { commit(equip(d, it.id)); setMsg(it.kind === 'armor' ? `Equipped ${it.name} — AC and armor effects updated.` : `Equipped ${it.name} — added to attacks.`) }}>Equip</button>)}
+            {it.coating && <span className="small">🧴 {it.coating.source}{it.coating.type ? ` → ${it.coating.type}` : ''}{it.coating.bonus ? ` +${it.coating.bonus.dice} ${it.coating.bonus.type}` : ''} (until long rest)</span>}
             {it.kind === 'scroll' && <button className="btn sm primary" onClick={() => { const r = useItem(d, it.id); commit(r.char); setMsg(r.message); if (it.qty <= 1) setSel(null) }}>📜 Use scroll</button>}
             {it.kind === 'consumable' && <button className="btn sm primary" onClick={() => { const r = useItem(d, it.id); commit(r.char); setMsg(r.message); if (it.qty <= 1) setSel(null) }}>Use</button>}
             {onGive && giveTargets.length > 0 && <button className="btn sm" onClick={() => setGiving(!giving)}>Give…</button>}

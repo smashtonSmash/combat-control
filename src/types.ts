@@ -26,6 +26,8 @@ export interface Trait {
 export interface Attack {
   id: string
   name: string
+  /** extra damage rider, e.g. Ember Flask +1d4 fire */
+  bonus?: { dice: string; type: DamageType }
   toHit: number
   damage: string // dice expression e.g. 1d8+3
   damageType: DamageType
@@ -59,6 +61,14 @@ export interface Item {
   heal?: string
   // scroll
   scroll?: ScrollData
+  /** homebrew catalog entry (src/catalog.ts) */
+  catalogKey?: string
+  /** gold value (shop) */
+  price?: number
+  /** blacksmith: fused armor waiting at the forge until the DM taps Ready */
+  atForge?: boolean
+  /** weapon coatings until the next long rest (oils / Ember Flask) */
+  coating?: { type?: DamageType; bonus?: { dice: string; type: DamageType }; source: string }
 }
 
 export interface Chest { id: string; name: string; items: Item[]; gold: number; silver: number; pouches?: { id: string; gold: number; silver: number }[]; updated?: number
@@ -113,6 +123,22 @@ export interface Character extends ArmorFields {
   tempHp?: number
   /** data: URL (offline) or 'sb:<storage path>?v=<ts>' (Supabase Storage) */
   portrait?: string
+  /** how base scores were generated (roll results, assignment, reroll lock) */
+  abilityGen?: import('./components/AbilityGen').GenState
+  /** active potion / scroll effects (cleared by long rest or End combat) */
+  effects?: ActiveEffect[]
+}
+
+export interface ActiveEffect {
+  id: string
+  key: string // catalog key or effect kind
+  name: string
+  note: string
+  until: 'combat' | 'long'
+  kind: 'acBonus' | 'stoneskin' | 'frostbite' | 'mirror' | 'secondWind' | 'mending' | 'whetstone' | 'badge'
+  /** mending: original tier to restore */
+  restoreTier?: import('./armor').Tier
+  amount?: number
 }
 
 export type Side = 'party' | 'monster'

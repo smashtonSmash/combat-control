@@ -1,3 +1,4 @@
+import { ShopForge } from '../components/ShopForge'
 import { ChestArt } from '../components/ChestArt'
 import { useEffect, useRef, useState } from 'react'
 import type { Character, Chest, Item } from '../types'
@@ -9,12 +10,13 @@ import { coinsToSilver, splitEvenly, takeFrom } from '../loot'
 
 type Payload = { kind: 'item'; id: string } | { kind: 'pouch'; id: string }
 
-export default function Loot({ chests, saveChest, deleteChest, characters, onGiveItem, onGiveCoins, readOnly, online, onOpenReveal }: {
+export default function Loot({ chests, saveChest, deleteChest, characters, onGiveItem, onGiveCoins, readOnly, online, onOpenReveal, onSaveChar }: {
   chests: Chest[]; saveChest: (k: Chest) => void; deleteChest: (id: string) => void
   characters: Character[]
   onGiveItem: (charId: string, item: Item) => void
   onGiveCoins: (charId: string, gold: number, silver: number) => void
   readOnly?: boolean
+  onSaveChar?: (c: Character) => void
   online?: boolean
   onOpenReveal?: () => void
 }) {
@@ -179,6 +181,7 @@ export default function Loot({ chests, saveChest, deleteChest, characters, onGiv
           setSplitOpen(false)
         }} />
       )}
+      {!readOnly && onSaveChar && <ShopForge characters={characters} onSave={onSaveChar} />}
     </div>
   )
 }

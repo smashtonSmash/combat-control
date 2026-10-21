@@ -1,3 +1,5 @@
+import { clearEffects } from './effects'
+import { migrateChestItems, migrateInventory } from './catalog'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Character, Chest, DiceRoll, Encounter, Item, WikiPage } from './types'
 import { useStored } from './store'
@@ -124,6 +126,9 @@ export default function App() {
   useEffect(() => {
     const needs = (x: { tierV?: number; armorTier?: string; underTier?: string }) => x.tierV !== 2 && (x.armorTier === 'mythic' || x.underTier === 'mythic')
     setCharacters((cs) => (cs.some(needs) ? cs.map(migrateTiers) : cs))
+    // old Potion of Healing (2d4+2) → Green Healing Potion
+    setCharacters((cs) => { const n = cs.map(migrateInventory); return n.some((x, i) => x !== cs[i]) ? n : cs })
+    setLocalChests((ks) => { const n = ks.map(migrateChestItems); return n.some((x, i) => x !== ks[i]) ? n : ks })
     setEncounter((e) => (e.combatants.some(needs) ? { ...e, combatants: e.combatants.map(migrateTiers) } : e))
   }, [])
 
@@ -216,6 +221,14 @@ export default function App() {
         await supabase.from('campaigns').update({ settings: { ...active!.settings, originBudget: n } }).eq('id', active!.id)
       } : undefined)
     : setLocalBudget
+  const [localReroll, setLocalReroll] = useStored<boolean>('allowReroll', () => true)
+  const allowReroll = online ? active?.settings?.allowReroll !== false : localReroll
+  const setAllowReroll = online
+    ? (isDM ? async (v: boolean) => {
+        setCampaigns((cs) => cs.map((x) => (x.id === active!.id ? { ...x, settings: { ...x.settings, allowReroll: v } } : x)))
+        await supabase.from('campaigns').update({ settings: { ...active!.settings, allowReroll: v } }).eq('id', active!.id)
+      } : undefined)
+    : setLocalReroll
   const giveItemTo = (charId: string, item: Item) => {
     const c = allChars.find((x) => x.id === charId)
     if (c) saveCharacter(addItem(c, item))
@@ -247,9 +260,9 @@ export default function App() {
   }
   const restAll = (kind: 'long' | 'short') => {
     for (const c of allChars) {
-      if (!isCaster(c)) continue
-      const sl = effectiveSlots(c)
-      if (kind === 'long' || sl.pact) saveCharacter({ ...c, slots: restoreAll(sl) })
+      let n = kind === 'long' ? clearEffects(c, 'long') : c
+      if (isCaster(c)) { const sl = effectiveSlots(c); if (kind === 'long' || sl.pact) n = { ...n, slots: restoreAll(sl) } }
+      if (n !== c) saveCharacter(n)
     }
   }
 
@@ -273,16 +286,16 @@ export default function App() {
       {online && !isDM && tab === 'battle' && <div className="live-banner">👁 Live view of {active!.name}’s battle — your DM runs combat. Damage they deal updates your sheet’s HP.</div>}
       {online && cloud.error && <div className="live-banner" style={{ borderColor: '#a83a28', background: '#2a1210' }}>⚠ Sync problem: {cloud.error} <button className="link" onClick={() => cloud.setError('')}>dismiss</button></div>}
       <main key={tab} className="fade-in">
-        {tab === 'battle' && <Battle encounter={encounter} setEncounter={setEnc} characters={characters} onSpendSlot={spendCharSlot} onUseScroll={useScroll} onRest={restAll} portraits={Object.fromEntries(allChars.map((c) => [c.id, c.portrait]))} />}
+        {tab === 'battle' && <Battle encounter={encounter} setEncounter={setEnc} characters={characters} onSpendSlot={spendCharSlot} onUseScroll={useScroll} onRest={restAll} onUpdateChar={saveCharacter} portraits={Object.fromEntries(allChars.map((c) => [c.id, c.portrait]))} />}
         {tab === 'characters' && (
           <>
-            <Characters characters={characters} onSave={saveCharacter} onDelete={deleteCharacter} giveTargets={allChars.map((c) => ({ id: c.id, name: c.name }))} onGive={giveBetween} customBudget={customBudget} onBudget={setBudget} />
+            <Characters characters={characters} onSave={saveCharacter} onDelete={deleteCharacter} giveTargets={allChars.map((c) => ({ id: c.id, name: c.name }))} onGive={giveBetween} customBudget={customBudget} onBudget={setBudget} allowReroll={allowReroll} onAllowReroll={setAllowReroll} />
             {hasSamples && <div className="center pad"><button className="btn ghost danger" onClick={removeSamples}>Remove all sample data</button></div>}
           </>
         )}
         {tab === 'dice' && <Dice history={history} setHistory={setHistory} />}
         {tab === 'campaign' && <Campaign pages={pages} setPages={setPages} />}
-        {tab === 'loot' && <Loot chests={chests} saveChest={saveChest} deleteChest={deleteChest} characters={allChars} onGiveItem={giveItemTo} onGiveCoins={giveCoinsTo} readOnly={online && !isDM} online={online} onOpenReveal={() => setDismissedReveal(null)} />}
+        {tab === 'loot' && <Loot chests={chests} saveChest={saveChest} deleteChest={deleteChest} characters={allChars} onGiveItem={giveItemTo} onGiveCoins={giveCoinsTo} readOnly={online && !isDM} online={online} onOpenReveal={() => setDismissedReveal(null)} onSaveChar={saveCharacter} />}
         {tab === 'casino' && <Casino characters={characters} adjust={adjustCoins} />}
       </main>
       {showReveal && revealed && <RevealOverlay chest={revealed} myChars={characters} onTake={(what, ref, charId, g, s) => cloud.takeLoot(revealed.id, charId, what, ref, g, s)} onClose={() => setDismissedReveal(revealed.revealedAt ?? null)} />}

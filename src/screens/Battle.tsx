@@ -1,3 +1,4 @@
+import { applySecondWind, clearEffects, effectOf, equippedWeapon, hasEffect } from '../effects'
 import { Portrait } from '../components/Portrait'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Attack, Character, Combatant, DamageType, Encounter, LogEntry, Side, Trait } from '../types'
@@ -14,12 +15,13 @@ import { charProf } from '../seed'
 
 type SetEnc = (f: (e: Encounter) => Encounter) => void
 
-interface Props { encounter: Encounter; setEncounter: SetEnc; characters: Character[]; onSpendSlot?: (charId: string, level: number) => void; onUseScroll?: (charId: string, itemId: string) => void; onRest?: (kind: 'long' | 'short') => void; portraits?: Record<string, string | undefined> }
+interface Props { encounter: Encounter; setEncounter: SetEnc; characters: Character[]; onSpendSlot?: (charId: string, level: number) => void; onUseScroll?: (charId: string, itemId: string) => void; onRest?: (kind: 'long' | 'short') => void; portraits?: Record<string, string | undefined>; onUpdateChar?: (c: Character) => void }
 
 const log = (e: Encounter, text: string, kind: LogEntry['kind']): LogEntry[] =>
   [{ id: uid(), round: e.round, text, kind, time: Date.now() }, ...e.log].slice(0, 200)
 
-export default function Battle({ encounter, setEncounter, characters, onSpendSlot, onUseScroll, onRest, portraits = {} }: Props) {
+export default function Battle({ encounter, setEncounter, characters, onSpendSlot, onUseScroll, onRest, portraits = {}, onUpdateChar }: Props) {
+  const charOf = (cb?: Combatant) => (cb?.characterId ? characters.find((x) => x.id === cb.characterId) : undefined)
   const { combatants, round, turnId } = encounter
   const party = combatants.filter((c) => c.side === 'party')
   const monsters = combatants.filter((c) => c.side === 'monster')
@@ -134,6 +136,8 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
   const resetCombat = () => {
     if (!confirm('End combat? Clears initiative, round and log (HP stays).')) return
     setEncounter((e) => ({ ...e, round: 1, turnId: null, log: [], combatants: e.combatants.map((c) => ({ ...c, initiative: null, tempTraits: [] })) }))
+    // fight-long potion/scroll effects end (Ironhide, Mending Steel, 1-minute Mirror Oil)
+    for (const cb of combatants) { const ch = charOf(cb); if (ch) { const n = clearEffects(ch, 'combat'); if (n !== ch) onUpdateChar?.(n) } }
   }
 
   const longRest = () => {
@@ -164,7 +168,9 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
       } else if (!res.hit) {
         push(`${a.name} → ${t.name}: ${res.weapon || 'attack'} MISSES${res.rollText ? ` (${res.rollText})` : ''}`, 'miss')
       } else {
-        const newHp = Math.max(0, t.hp - res.final)
+        let newHp = Math.max(0, t.hp - res.final)
+        const sw = applySecondWind(charOf(t), newHp)
+        if (sw.char) { newHp = sw.hp; queueMicrotask(() => onUpdateChar?.(sw.char!)); push(`🍷 Second Wind Elixir: ${t.name} drops to 1 HP instead of 0!`, 'heal') }
         cs = cs.map((c) => (c.id === t.id ? { ...c, hp: newHp, shrugUsed: c.shrugUsed || !!res.shrug } : c))
         const extra = res.steps.length ? ` [${res.steps.join('; ')}]` : ''
         push(`${a.name} → ${t.name}: ${res.weapon || 'attack'} ${res.crit ? 'CRITS' : 'hits'} for ${res.final} ${res.type}${extra}${res.rollText ? ` (${res.rollText})` : ''}. HP ${t.hp}→${newHp}`, 'hit')
@@ -172,6 +178,7 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
       }
       return { ...e, combatants: cs, log: entries }
     })
+    if (res.whetstone) { const ch = charOf(a); if (ch) onUpdateChar?.({ ...ch, effects: (ch.effects ?? []).filter((x) => x.kind !== 'whetstone') }) }
     if (res.spell && res.spell.slotLevel > 0) onSpendSlot?.(res.spell.charId, res.spell.slotLevel)
     if (res.scroll) onUseScroll?.(res.scroll.charId, res.scroll.itemId)
     if (res.grant) { setAttack(null); setFlash({ id: t.id, text: '🛡', kind: 'heal', key: Date.now() }); return }
@@ -184,7 +191,7 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
   const selC = byId(selected)
 
   const card = (c: Combatant) => (
-    <CombatantCard key={c.id} c={c} portrait={c.characterId ? portraits[c.characterId] : undefined}
+    <CombatantCard key={c.id} c={c} effects={charOf(c)?.effects} portrait={c.characterId ? portraits[c.characterId] : undefined}
       isTurn={c.id === turnId} isSelected={c.id === selected}
       isOver={ghost?.over === c.id} isDragging={ghost?.id === c.id}
       flash={flash?.id === c.id ? flash : null}
@@ -259,11 +266,13 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
       })()}
 
       {attack && byId(attack.a) && byId(attack.t) && (
-        <AttackSheet caster={characters.find((c) => c.id === byId(attack.a)!.characterId)} attacker={byId(attack.a)!} target={byId(attack.t)!} onClose={() => setAttack(null)} onApply={applyAttack} />
+        <AttackSheet caster={charOf(byId(attack.a))} targetChar={charOf(byId(attack.t))} attacker={byId(attack.a)!} target={byId(attack.t)!} onClose={() => setAttack(null)} onApply={applyAttack} />
       )}
       {hpFor && byId(hpFor) && (
         <HpSheet c={byId(hpFor)!} onClose={() => setHpFor(null)} onApply={(hp, text, kind) => {
           const c = byId(hpFor)!
+          const sw = hp < c.hp ? applySecondWind(charOf(c), hp) : { hp }
+          if ('char' in sw && sw.char) { hp = sw.hp; onUpdateChar?.(sw.char); text += ' — 🍷 Second Wind: drops to 1 HP instead!' }
           setEncounter((e) => ({ ...e, combatants: e.combatants.map((x) => (x.id === c.id ? { ...x, hp } : x)), log: log(e, text, kind) }))
           setFlash({ id: c.id, text: hp >= c.hp ? `+${hp - c.hp}` : `−${c.hp - hp}`, kind: hp >= c.hp ? 'heal' : 'hit', key: Date.now() })
           setHpFor(null)
@@ -325,8 +334,8 @@ function nextName(all: Combatant[], base: string) {
 }
 
 // ---------------- Card ----------------
-function CombatantCard({ c, portrait, isTurn, isSelected, isOver, isDragging, flash, onPointerDown, onHandleDown, onTap, onHp, onMenu }: {
-  c: Combatant; portrait?: string; isTurn: boolean; isSelected: boolean; isOver: boolean; isDragging: boolean
+function CombatantCard({ c, effects = [], portrait, isTurn, isSelected, isOver, isDragging, flash, onPointerDown, onHandleDown, onTap, onHp, onMenu }: {
+  c: Combatant; effects?: import('../types').ActiveEffect[]; portrait?: string; isTurn: boolean; isSelected: boolean; isOver: boolean; isDragging: boolean
   flash: { text: string; kind: string; key: number } | null
   onPointerDown: (e: React.PointerEvent) => void; onHandleDown: (e: React.PointerEvent) => void
   onTap: () => void; onHp: () => void; onMenu: () => void
@@ -356,6 +365,9 @@ function CombatantCard({ c, portrait, isTurn, isSelected, isOver, isDragging, fl
         <div className={'hp-bar ' + hpClass}><i style={{ width: pct + '%' }} /></div>
         <span><b>{c.hp}</b>/{c.maxHp} HP</span>
       </button>
+      {effects.length > 0 && (
+        <div className="badges">{effects.map((e) => <span key={e.id} className="badge effect-badge" title={e.note}>{EFFECT_ICON[e.kind]} {e.name.replace(/^Scroll of /, '')}</span>)}</div>
+      )}
       {(dmgTraits.length > 0 || c.conditions.length > 0 || out) && (
         <div className="badges">
           {out && <span className="badge out">{c.side === 'party' ? '💔 DOWN' : '💀 DEFEATED'}</span>}
@@ -381,14 +393,15 @@ function CombatantCard({ c, portrait, isTurn, isSelected, isOver, isDragging, fl
 interface AttackResult {
   attackerId: string; targetId: string; weapon: string; hit: boolean; crit: boolean
   type: DamageType; final: number; steps: string[]; rollText: string; heal?: boolean; shrug?: boolean
-  spell?: { charId: string; slotLevel: number }; scroll?: { charId: string; itemId: string }; grant?: Trait
+  spell?: { charId: string; slotLevel: number }; scroll?: { charId: string; itemId: string }; grant?: Trait; whetstone?: boolean
 }
+const EFFECT_ICON: Record<import('../types').ActiveEffect['kind'], string> = { acBonus: '🪨', stoneskin: '🟫', frostbite: '❄️', mirror: '🪞', secondWind: '🍷', mending: '🔨', whetstone: '🗡️', badge: '✨' }
 
 const MODE_KEY = 'cc.attackEntryMode'
 const loadEntryMode = (): 'quick' | 'full' => { try { return localStorage.getItem(MODE_KEY) === 'full' ? 'full' : 'quick' } catch { return 'quick' } }
 
-function AttackSheet({ attacker, target, onClose, onApply, caster }: {
-  attacker: Combatant; target: Combatant; onClose: () => void; onApply: (r: AttackResult) => void; caster?: Character
+function AttackSheet({ attacker, target, onClose, onApply, caster, targetChar }: {
+  attacker: Combatant; target: Combatant; onClose: () => void; onApply: (r: AttackResult) => void; caster?: Character; targetChar?: Character
 }) {
   const first: Attack | undefined = attacker.attacks[0]
   const [weapon, setWeapon] = useState(first?.name ?? '')
@@ -412,8 +425,19 @@ function AttackSheet({ attacker, target, onClose, onApply, caster }: {
   const traits = matchingTraits(target, type)
   const general = target.traits.filter((t) => !t.damageTypes.length)
   const arm = combinedArmor(target)
-  const acBonus = arm.acVs[type] ?? 0
-  const effAc = target.ac + acBonus
+  const rawAcBonus = arm.acVs[type] ?? 0
+  const stoneskin = hasEffect(targetChar, 'stoneskin') && rawAcBonus < 0
+  const acBonus = stoneskin ? 0 : rawAcBonus
+  const ironhide = effectOf(targetChar, 'acBonus')?.amount ?? 0
+  const effAc = target.ac + acBonus + ironhide
+  const whet = hasEffect(caster, 'whetstone')
+  const frost = hasEffect(targetChar, 'frostbite')
+  const mirrorW = hasEffect(targetChar, 'mirror') ? equippedWeapon(targetChar!) : undefined
+  const mirrorType = mirrorW ? mirrorW.coating?.type ?? mirrorW.damageType : undefined
+  const [origType, setOrigType] = useState<DamageType | null>(null)
+  useEffect(() => { if (mirrorType && type !== mirrorType) { setOrigType(type); setType(mirrorType) } }, [type, mirrorType])
+  const [bonus, setBonus] = useState(first?.bonus)
+  const [bonusDmg, setBonusDmg] = useState(0)
   const [zeroBy, setZeroBy] = useState<null | 'shrug' | 'deflect'>(null)
   const [d6, setD6] = useState<number | null>(null)
   const canDeflect = arm.deflectD6 && type === 'piercing'
@@ -423,6 +447,13 @@ function AttackSheet({ attacker, target, onClose, onApply, caster }: {
     const red = arm.reduce[type] ?? 0
     if (red && o.final > 0) { const n = Math.max(0, o.final - red); o.steps.push(`Armor (${target.armor}): −${red} ${type}: ${o.final} → ${n}`); o.final = n }
     if (acBonus) o.steps.unshift(`Armor: ${fmtMod(acBonus)} AC vs ${type} (AC ${effAc})`)
+    if (stoneskin) o.steps.unshift(`Stoneskin Mud: Mythic ${fmtMod(rawAcBonus)} AC vs ${type} ignored`)
+    if (ironhide) o.steps.unshift(`Ironhide Draught: +${ironhide} AC`)
+    if (mirrorType && origType) o.steps.unshift(`Mirror Oil: ${origType} → ${mirrorType}`)
+    if (bonus && bonusDmg > 0 && zeroBy === null) {
+      const b = computeDamage(bonusDmg, matchingTraits(target, bonus.type)); o.final += b.final
+      o.steps.push(`${bonus.type} rider +${bonus.dice}: ${bonusDmg}${b.final !== bonusDmg ? ` → ${b.final}` : ''}`)
+    }
     if (zeroBy === 'deflect') { o.steps.push(`Deflect d6 = 6: arrows/bolts snap, or a thick weapon (spear) is deflected and ${target.name} is pushed back 5 ft. No damage.`); o.final = 0 }
     if (zeroBy === 'shrug') { o.steps.push(`Shrug Off (Legendary Leather, 1/day): ${target.name} shrugs off the hit. No damage.`); o.final = 0 }
     return o
@@ -462,19 +493,23 @@ function AttackSheet({ attacker, target, onClose, onApply, caster }: {
   const spellExtra = spell && caster ? (scrollMode ? { scroll: { charId: caster.id, itemId: spell.id.slice(7) } } : { spell: { charId: caster.id, slotLevel: spell.level === 0 ? 0 : slotLv } }) : {}
   const noSlot = !!spell && !scrollMode && spell.level > 0 && !availableSlots(cSlots, spell.level).some((o) => o.level === slotLv)
 
-  const pick = (a: Attack) => { setSpellId(null); setWeapon(a.name); setToHit(a.toHit); setExpr(a.damage); setType(a.damageType); setDmgText('') }
+  const pick = (a: Attack) => { setSpellId(null); setWeapon(a.name); setToHit(a.toHit); setExpr(a.damage); setType(a.damageType); setDmgText(''); setBonus(a.bonus); setBonusDmg(0) }
   const rollAttack = () => {
     const d = mode === 'normal' ? [rollDie(20)] : [rollDie(20), rollDie(20)]
     const kept = mode === 'adv' ? Math.max(...d) : mode === 'dis' ? Math.min(...d) : d[0]
     const total = kept + toHit
     setAtk({ d20: d, kept, total })
     const isCrit = kept === 20
-    setCrit(isCrit)
-    setHit(kept !== 1 && (isCrit || total >= effAc))
+    const didHit = kept !== 1 && (isCrit || total >= effAc)
+    setCrit(isCrit || (whet && didHit))
+    setHit(didHit)
   }
   const rollDamage = (critical = crit) => {
     const r = rollExpression(expr, critical)
-    if (r.valid) { setDmg(Math.max(0, r.total)); setDmgText(r.detail + (critical ? ' (crit: dice doubled)' : '')) }
+    if (r.valid) {
+      setDmg(Math.max(0, r.total)); setDmgText(r.detail + (critical ? ' (crit: dice doubled)' : ''))
+      if (bonus) { const b = rollExpression(bonus.dice, critical); setBonusDmg(Math.max(0, b.total)) }
+    }
     else setDmgText('Could not read that dice — try like 1d8+3')
   }
 
@@ -499,7 +534,7 @@ function AttackSheet({ attacker, target, onClose, onApply, caster }: {
         ) : (
           <button className="btn big danger-fill" disabled={(qNum <= 0 && !outcome.steps.length) || noSlot} onClick={() => onApply({
             attackerId: attacker.id, targetId: target.id, weapon, hit: true, crit: false, type,
-            final: outcome.final, steps: outcome.steps, rollText: '', shrug: zeroBy === 'shrug', ...spellExtra,
+            final: outcome.final, steps: outcome.steps, rollText: '', shrug: zeroBy === 'shrug', whetstone: whet && !spell, ...spellExtra,
           })}>
             {`Apply ${outcome.final} ${type} → ${target.name} (${target.hp}→${Math.max(0, target.hp - outcome.final)} HP)`}
           </button>
@@ -507,7 +542,7 @@ function AttackSheet({ attacker, target, onClose, onApply, caster }: {
       ) : (
         <button className={'btn big ' + (hit ? 'danger-fill' : '')} onClick={() => onApply({
           attackerId: attacker.id, targetId: target.id, weapon, hit, crit, type,
-          final: outcome.final, steps: outcome.steps, rollText, shrug: hit && zeroBy === 'shrug', ...spellExtra,
+          final: outcome.final, steps: outcome.steps, rollText, shrug: hit && zeroBy === 'shrug', whetstone: whet && hit && !spell, ...spellExtra,
         })}>
           {hit ? `Apply ${outcome.final} ${type} damage → ${target.name} (${target.hp}→${Math.max(0, target.hp - outcome.final)} HP)` : 'Log miss'}
         </button>
@@ -517,6 +552,16 @@ function AttackSheet({ attacker, target, onClose, onApply, caster }: {
         <div><b>{target.name}</b><div className="muted small">{target.armor || 'no armor listed'} · {target.hp}/{target.maxHp} HP</div></div>
       </div>
 
+      {(whet || frost || mirrorW || hasEffect(targetChar, 'mirror') || ironhide > 0 || stoneskin || bonus) && (
+        <div className="effect-reminders">
+          {whet && <div className="reminder-item small">🗡️ <b>Whetstone Oil:</b> {attacker.name}’s next weapon hit is a <b>critical hit</b>{quick ? ' — roll crit dice' : ' (auto-crit on hit)'}. Used up when the hit is applied.</div>}
+          {frost && <div className="reminder-item small">❄️ <b>Frostbite Salve:</b> if this is a melee hit, {attacker.name} takes <b>1d4 cold</b>.</div>}
+          {hasEffect(targetChar, 'mirror') && <div className="reminder-item small">🪞 <b>Mirror Oil:</b> {mirrorType ? <>{origType ?? type} damage becomes <b>{mirrorType}</b> ({target.name}’s {mirrorW!.name})</> : <>{target.name} has no weapon equipped — no change.</>}</div>}
+          {ironhide > 0 && <div className="reminder-item small">🪨 <b>Ironhide:</b> +{ironhide} AC (AC {effAc}).</div>}
+          {stoneskin && <div className="reminder-item small">🟫 <b>Stoneskin Mud:</b> Mythic −1 AC vs {type} ignored.</div>}
+          {bonus && <div className="reminder-item small row">🔥 Rider +{bonus.dice} {bonus.type}: <input aria-label="Rider damage" style={{ width: 56 }} inputMode="numeric" value={bonusDmg || ''} placeholder="0" onChange={(e) => setBonusDmg(Math.max(0, parseInt(e.target.value) || 0))} /></div>}
+        </div>
+      )}
       <div className="entry-toggle">
         <Segmented value={entry} onChange={setEntry} options={[{ value: 'quick', label: '✋ Quick (table dice)' }, { value: 'full', label: '🎲 Roll in app' }]} />
       </div>

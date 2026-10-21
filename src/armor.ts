@@ -41,6 +41,8 @@ export interface ArmorDef {
   dexCap: number | null // null = unlimited, 0 = no Dex
   stealthDisadvantage: boolean
   focus: string // e.g. 'bludgeoning armor'
+  /** optional per-armor price multiplier (overrides ARMOR_PRICE_MULTIPLIER in catalog.ts) */
+  priceMultiplier?: number
   allTiers: string[] // notes that apply at every tier
   tiers: Record<Tier, ArmorEffect[]> // each tier stacks on top of earlier tiers
 }

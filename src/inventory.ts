@@ -1,3 +1,5 @@
+import { catalogItem, catalogToItem } from './catalog'
+import { useCatalogItem } from './effects'
 import type { Character, DamageType, Item } from './types'
 import { uid } from './types'
 import { TIER_SHORT, armorAc, armorById, armorLabel, type Tier } from './armor'
@@ -27,7 +29,8 @@ export function scrollCastText(who: string, spell: CharSpell) {
   return t + ' The scroll crumbles to dust.'
 }
 
-export const potionOfHealing = (): Item => ({ id: uid(), name: 'Potion of Healing', kind: 'consumable', qty: 1, heal: '2d4+2', description: 'Drink to regain 2d4+2 HP.' })
+/** Green Healing Potion (replaces the old Potion of Healing 2d4+2). */
+export const potionOfHealing = (): Item => catalogToItem(catalogItem('heal-green')!)
 export const armorItem = (armorId: string, tier: Tier): Item => {
   const a = armorById(armorId)!
   return { id: uid(), name: `${TIER_SHORT[tier]} ${a.name} Armor`, kind: 'armor', qty: 1, armorId, tier, description: `${a.category} armor · ${a.focus}` }
@@ -59,13 +62,15 @@ export function equip(c: Character, itemId: string): Character {
   const it = inv.find((x) => x.id === itemId)
   if (!it) return c
   if (it.kind === 'armor') {
+    if (it.atForge) return c // still at the blacksmith
     // one armor at a time
     const next = { ...c, armorId: it.armorId, armorTier: it.tier, inventory: inv.map((x) => (x.kind === 'armor' ? { ...x, equipped: x.id === itemId } : x)) }
     return recalcArmor(next)
   }
   if (it.kind === 'weapon') {
     const mod = Math.max(abilityMod(c.abilities.str), abilityMod(c.abilities.dex))
-    const atk = { id: weaponAttackId(it), name: it.name, toHit: charProf(c) + mod, damage: `${it.damage ?? '1d4'}${mod ? (mod > 0 ? '+' : '') + mod : ''}`, damageType: it.damageType ?? 'bludgeoning' as DamageType }
+    const atk = { id: weaponAttackId(it), name: it.name + (it.coating ? ` (${it.coating.source})` : ''), toHit: charProf(c) + mod, damage: `${it.damage ?? '1d4'}${mod ? (mod > 0 ? '+' : '') + mod : ''}`,
+      damageType: it.coating?.type ?? it.damageType ?? 'bludgeoning' as DamageType, ...(it.coating?.bonus ? { bonus: it.coating.bonus } : {}) }
     return { ...c, attacks: [...c.attacks.filter((a) => a.id !== atk.id), atk], inventory: inv.map((x) => (x.id === itemId ? { ...x, equipped: true } : x)) }
   }
   return c
@@ -92,7 +97,7 @@ export function removeItem(c: Character, itemId: string, qty = Infinity): Charac
 export function addItem(c: Character, item: Item): Character {
   const inv = c.inventory ?? []
   // stack identical unequipped consumables/misc
-  const same = (item.kind === 'consumable' || item.kind === 'misc' || item.kind === 'scroll') && inv.find((x) => x.kind === item.kind && x.name === item.name && x.heal === item.heal)
+  const same = (item.kind === 'consumable' || item.kind === 'misc' || item.kind === 'scroll') && inv.find((x) => x.kind === item.kind && x.name === item.name && x.heal === item.heal && x.catalogKey === item.catalogKey && x.tier === item.tier)
   if (same) return { ...c, inventory: inv.map((x) => (x === same ? { ...x, qty: x.qty + item.qty } : x)) }
   return { ...c, inventory: [...inv, { ...item, equipped: false }] }
 }
@@ -100,6 +105,8 @@ export function addItem(c: Character, item: Item): Character {
 export function useItem(c: Character, itemId: string): { char: Character; message: string } {
   const it = (c.inventory ?? []).find((x) => x.id === itemId)
   if (!it) return { char: c, message: '' }
+  const cat = catalogItem(it.catalogKey)
+  if (cat) { const r = useCatalogItem(c, it, cat); return { char: r.char, message: r.message } }
   let char = removeItem(c, itemId, 1)
   if (it.kind === 'scroll' && it.scroll?.kind === 'spell') return { char, message: scrollCastText(c.name, it.scroll.spell) }
   if (it.heal) {

@@ -6,6 +6,7 @@ import { COMMON_WEAPONS, KIND_ICON, armorItem, potionOfHealing, scrollItem, weap
 import { fromSrd, loadSpells, type CharSpell, type SrdSpell } from '../spells'
 import { CustomSpell } from './Spells'
 import { DAMAGE_ICONS } from '../types'
+import { CONSUMABLES, armorPrice, catalogToItem, displayName, itemPrice } from '../catalog'
 
 export function ItemCard({ it, selected, onClick, onPointerDown, dragging }: {
   it: Item; selected?: boolean; onClick?: () => void; onPointerDown?: (e: React.PointerEvent) => void; dragging?: boolean
@@ -20,6 +21,8 @@ export function ItemCard({ it, selected, onClick, onPointerDown, dragging }: {
       <span className="item-name">{it.name}</span>
       <small className="item-sub">{it.scroll?.kind === 'spell' ? `${it.scroll.spell.level ? 'lv ' + it.scroll.spell.level : 'cantrip'} scroll` : it.kind === 'weapon' ? `${it.damage} ${it.damageType}` : it.heal ? `heals ${it.heal}` : it.tier ? <span style={{ color }}>◆ {TIER_SHORT[it.tier]}</span> : it.kind}</small>
       {it.qty > 1 && <span className="qty">×{it.qty}</span>}
+      {it.atForge && <span className="forge-ribbon">🔥 AT THE FORGE</span>}
+      {itemPrice(it) != null && <span className="item-price">{itemPrice(it)}g</span>}
     </button>
   )
 }
@@ -30,21 +33,22 @@ export function ItemPicker({ onAdd, customSpells = [] }: { onAdd: (it: Item) => 
   const [tier, setTier] = useState<Tier>('green')
   const [custom, setCustom] = useState<{ name: string; kind: ItemKind; qty: number; description: string; damage: string; damageType: DamageType; heal: string }>(
     { name: '', kind: 'misc', qty: 1, description: '', damage: '1d6', damageType: 'slashing', heal: '' })
-  const [open, setOpen] = useState<'quick' | 'scroll' | 'custom'>('quick')
+  const [open, setOpen] = useState<'quick' | 'potions' | 'scroll' | 'custom'>('quick')
   return (
     <div className="item-picker">
       <div className="segmented">
         <button type="button" className={open === 'quick' ? 'on' : ''} onClick={() => setOpen('quick')}>Quick picks</button>
+        <button type="button" className={open === 'potions' ? 'on' : ''} onClick={() => setOpen('potions')}>🧪 Potions & Scrolls</button>
         <button type="button" className={open === 'scroll' ? 'on' : ''} onClick={() => setOpen('scroll')}>📜 Spell scroll</button>
         <button type="button" className={open === 'custom' ? 'on' : ''} onClick={() => setOpen('custom')}>Custom item</button>
       </div>
-      {open === 'scroll' ? <ScrollPicker onAdd={onAdd} customSpells={customSpells} /> : open === 'quick' ? (
+      {open === 'potions' ? <ConsumablePicker onAdd={onAdd} /> : open === 'scroll' ? <ScrollPicker onAdd={onAdd} customSpells={customSpells} /> : open === 'quick' ? (
         <>
-          <button className="btn sm" onClick={() => onAdd(potionOfHealing())}>🧪 + Potion of Healing (2d4+2)</button>
+          <button className="btn sm" onClick={() => onAdd(potionOfHealing())}>🧪 + Green Healing Potion (2d8+2) <small>10g</small></button>
           <div className="mini-label">Armor</div>
           <div className="chips-row wrap">{ARMOR_CATALOG.map((a) => <button key={a.id} className={'chip ' + (armorId === a.id ? 'on' : '')} onClick={() => setArmorId(a.id)}>{a.name}</button>)}</div>
-          <div className="chips-row wrap">{TIERS.map((t) => <button key={t} className={'chip ' + (tier === t ? 'on' : '')} style={{ color: TIER_COLORS[t] }} onClick={() => setTier(t)}>◆ {TIER_SHORT[t]}</button>)}</div>
-          <button className="btn sm" onClick={() => onAdd(armorItem(armorId, tier))}>🛡 + {TIER_SHORT[tier]} {ARMOR_CATALOG.find((a) => a.id === armorId)?.name} Armor</button>
+          <div className="chips-row wrap">{TIERS.map((t) => <button key={t} className={'chip ' + (tier === t ? 'on' : '')} style={{ color: TIER_COLORS[t] }} onClick={() => setTier(t)}>◆ {TIER_SHORT[t]} <small>{armorPrice(armorId, t)}g</small></button>)}</div>
+          <button className="btn sm" onClick={() => onAdd(armorItem(armorId, tier))}>🛡 + {TIER_SHORT[tier]} {ARMOR_CATALOG.find((a) => a.id === armorId)?.name} Armor <small>{armorPrice(armorId, tier)}g</small></button>
           <div className="mini-label">Weapons</div>
           <div className="chips-row wrap">{COMMON_WEAPONS.map((w) => <button key={w.name} className="chip" onClick={() => onAdd(weaponItem(w))}>+ {w.name} <small>{w.damage}</small></button>)}</div>
         </>
@@ -111,6 +115,30 @@ function ScrollPicker({ onAdd, customSpells }: { onAdd: (it: Item) => void; cust
         ))}
         <CustomSpell level={lvl ?? 1} onAdd={add} label="✎ Custom scroll" />
       </div>
+    </div>
+  )
+}
+
+/** Homebrew potions & scrolls from src/catalog.ts, grouped by tier. */
+export function ConsumablePicker({ onAdd, priceLabel }: { onAdd: (it: Item) => void; priceLabel?: (gold: number) => string }) {
+  return (
+    <div className="consumable-picker">
+      {TIERS.map((t) => {
+        const list = CONSUMABLES.filter((c) => c.tier === t)
+        return (
+          <div key={t} className="cp-tier">
+            <div className="cp-tier-head" style={{ color: TIER_COLORS[t] }}>◆ {TIER_SHORT[t]}</div>
+            {list.length === 0 && <div className="small muted">None yet.</div>}
+            {list.map((c) => (
+              <button key={c.key} className="cp-row" style={{ ['--tier' as string]: TIER_COLORS[t] }} onClick={() => onAdd(catalogToItem(c))}>
+                <span className="cp-icon">{c.type === 'scroll' ? '📜' : '🧪'}</span>
+                <span className="cp-main"><b>{displayName(c)}</b><small>{c.desc}</small></span>
+                <span className="cp-price">{priceLabel ? priceLabel(c.price) : `${c.price}g`}</span>
+              </button>
+            ))}
+          </div>
+        )
+      })}
     </div>
   )
 }

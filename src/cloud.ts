@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from './supabaseConfig'
 import type { Character, Chest, Encounter } from './types'
 import { migrateTiers } from './armor'
+import { migrateChestItems, migrateInventory } from './catalog'
 const normEnc = (e: Encounter | null) => (e ? { ...e, combatants: (e.combatants ?? []).map(migrateTiers) } : e)
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -22,7 +23,7 @@ export function useSession() {
   return { session, ready }
 }
 
-export interface CampaignInfo { id: string; name: string; join_code: string; role: 'dm' | 'player'; dm_id: string; settings?: { originBudget?: number } }
+export interface CampaignInfo { id: string; name: string; join_code: string; role: 'dm' | 'player'; dm_id: string; settings?: { originBudget?: number; allowReroll?: boolean } }
 export interface MemberInfo { user_id: string; role: 'dm' | 'player'; display_name: string }
 
 export async function listCampaigns(userId: string): Promise<CampaignInfo[]> {
@@ -66,10 +67,10 @@ export function useCampaign(cid: string | null) {
       supabase.from('chests').select('id, data').eq('campaign_id', cid),
     ])
     if (c.error) { setStatus('error'); setError(c.error.message); return }
-    setChars((c.data ?? []).map((r) => ({ ...r, data: migrateTiers({ ...(r.data as Character), id: r.id }) })))
+    setChars((c.data ?? []).map((r) => ({ ...r, data: migrateInventory(migrateTiers({ ...(r.data as Character), id: r.id })) })))
     setEnc(normEnc((e.data?.data as Encounter) ?? null))
     setMembers((m.data ?? []) as MemberInfo[])
-    setChests((k.data ?? []).map((r) => ({ ...(r.data as Chest), id: r.id })))
+    setChests((k.data ?? []).map((r) => migrateChestItems({ ...(r.data as Chest), id: r.id })))
   }, [cid])
 
   useEffect(() => {
@@ -80,7 +81,7 @@ export function useCampaign(cid: string | null) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'characters', filter: `campaign_id=eq.${cid}` }, (p) => {
         if (p.eventType === 'DELETE') { const id = (p.old as { id: string }).id; setChars((cs) => cs.filter((x) => x.id !== id)); return }
         const r = p.new as CloudChar
-        const row = { id: r.id, owner_id: r.owner_id, data: migrateTiers({ ...r.data, id: r.id }) }
+        const row = { id: r.id, owner_id: r.owner_id, data: migrateInventory(migrateTiers({ ...r.data, id: r.id })) }
         setChars((cs) => (cs.some((x) => x.id === r.id) ? cs.map((x) => (x.id === r.id ? row : x)) : [...cs, row]))
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'encounters', filter: `campaign_id=eq.${cid}` }, (p) => {
@@ -89,7 +90,7 @@ export function useCampaign(cid: string | null) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'chests', filter: `campaign_id=eq.${cid}` }, (p) => {
         if (p.eventType === 'DELETE') { const id = (p.old as { id: string }).id; setChests((ks) => ks.filter((x) => x.id !== id)); return }
         const r = p.new as { id: string; data: Chest }
-        const row = { ...r.data, id: r.id }
+        const row = migrateChestItems({ ...r.data, id: r.id })
         setChests((ks) => (ks.some((x) => x.id === r.id) ? ks.map((x) => (x.id === r.id ? row : x)) : [...ks, row]))
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'members', filter: `campaign_id=eq.${cid}` }, () => { load() })
