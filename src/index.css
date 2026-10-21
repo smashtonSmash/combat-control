@@ -414,29 +414,81 @@ h1, h2, h3, h4 { font-family: var(--serif); color: var(--gold2); letter-spacing:
 .custom-spell { display: flex; flex-direction: column; gap: 6px; }
 .badge.temp { color: #9be0ff; border-color: #3a7a9a; }
 /* ---------- Treasure reveal ---------- */
-.reveal-overlay { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 48px 16px 24px; overflow-y: auto;
-  background: radial-gradient(ellipse at 50% 30%, rgba(80,58,20,.96), rgba(8,6,4,.98) 70%); animation: fadein .3s ease-out; }
+.reveal-overlay { position: fixed; inset: 0; z-index: 100; overflow-y: auto; animation: fadein .3s ease-out;
+  background: radial-gradient(ellipse at 50% 28%, #4a3412 0%, #1a1008 45%, #050302 80%); }
+.reveal-vignette { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 35%, transparent 35%, rgba(0,0,0,.85) 100%); }
+.reveal-content { position: relative; min-height: 100%; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 48px 16px 24px; }
 @keyframes fadein { from { opacity: 0 } to { opacity: 1 } }
 .reveal-close { position: absolute; top: 12px; right: 12px; }
 .reveal-title { font-family: var(--serif); font-size: 26px; color: var(--gold2, #f0d58a); text-shadow: 0 2px 10px #000; }
-.big-chest { position: relative; width: 190px; height: 150px; margin-top: 30px; perspective: 600px; flex-shrink: 0; }
-.chest-base { position: absolute; bottom: 0; left: 0; right: 0; height: 90px; border-radius: 6px 6px 14px 14px; border: 4px solid #c99a3c;
-  background: repeating-linear-gradient(90deg, #6b3f1d 0 18px, #5a3317 18px 36px); box-shadow: 0 12px 30px rgba(0,0,0,.6); display: flex; justify-content: center; }
-.chest-base .lock { margin-top: -6px; font-size: 22px; transition: opacity .3s; }
-.chest-lid { position: absolute; bottom: 86px; left: 0; right: 0; height: 56px; border-radius: 60px 60px 4px 4px; border: 4px solid #c99a3c;
-  background: repeating-linear-gradient(90deg, #7a4a22 0 18px, #683d1b 18px 36px); transform-origin: 50% 100%; transition: transform .9s cubic-bezier(.3,1.4,.5,1);
-  display: flex; align-items: center; justify-content: center; color: #f6d77a; font-size: 22px; animation: rattle .6s ease-in-out 2; }
-@keyframes rattle { 0%,100% { transform: rotate(0) } 25% { transform: rotate(-3deg) } 75% { transform: rotate(3deg) } }
-.big-chest.open .chest-lid { transform: rotateX(-115deg); animation: none; }
-.big-chest.open .lock { opacity: 0; }
-.chest-glow { position: absolute; left: 10%; right: 10%; bottom: 60px; height: 60px; border-radius: 50%; background: radial-gradient(ellipse, #ffe9a0, transparent 70%); opacity: 0; transition: opacity .8s .3s; filter: blur(4px); }
-.big-chest.open .chest-glow { opacity: 1; animation: shimmer 2s ease-in-out infinite; }
-@keyframes shimmer { 50% { transform: scale(1.15); opacity: .7 } }
-.reveal-loot { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 8px; }
-.reveal-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; border: 1px solid #6b4f22; background: rgba(18,15,12,.9); animation: rise .45s ease-out both; }
-.reveal-item.coin { border-color: #b88a26; }
-.reveal-item small { margin-left: auto; color: var(--gold2, #f0d58a); font-weight: 800; }
-.ri-icon { font-size: 22px; }
 @keyframes rise { from { opacity: 0; transform: translateY(16px) scale(.95) } to { opacity: 1; transform: none } }
 .reveal-toasts { position: fixed; left: 0; right: 0; bottom: 90px; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
 .reveal-toast { padding: 8px 14px; border-radius: 999px; background: #12261a; border: 1px solid #4fbf63; font-weight: 700; animation: rise .3s ease-out both; }
+
+/* ---------- Fantasy chest art ---------- */
+.chest3d { --w: 210px; position: relative; width: var(--w); height: calc(var(--w) * .82); margin-top: 26px; flex-shrink: 0; perspective: 700px; }
+.chest3d.small { --w: 54px; margin: 0; }
+.chest3d svg { display: block; width: 100%; }
+.chest-base-svg { position: absolute; bottom: 6%; left: 0; filter: drop-shadow(0 10px 14px rgba(0,0,0,.6)); }
+.chest-inner { position: absolute; left: 2%; width: 96% !important; bottom: calc(6% + var(--w) * .5); opacity: 0; transition: opacity .3s .2s; }
+.chest-lid3d { position: absolute; left: 0; right: 0; bottom: calc(6% + var(--w) * .5 - 2px); transform-origin: 50% 0%; transform-style: preserve-3d;
+  transform: translateY(0) rotateX(0); transition: transform 1s cubic-bezier(.25,1.5,.45,1); will-change: transform; }
+.chest-lid3d svg { transform-origin: 50% 100%; }
+.chest-shadow { position: absolute; left: 8%; right: 8%; bottom: 0; height: 10%; border-radius: 50%; background: radial-gradient(ellipse, rgba(0,0,0,.7), transparent 70%); }
+/* lid hinges at its back edge: rotate around the bottom hinge line */
+.chest-lid3d { transform-origin: 50% 100%; }
+.chest3d.opening .chest-lid3d, .chest3d.open .chest-lid3d { transform: rotateX(68deg); }
+.chest3d.opening .chest-inner, .chest3d.open .chest-inner { opacity: 1; }
+.chest3d.closed:not(.small) { animation: chest-shake .5s ease-in-out .1s 1; }
+.chest3d.opening .chest-lid3d { transition-delay: .45s; }
+.chest3d.opening { animation: chest-shake .45s ease-in-out 1; }
+@keyframes chest-shake { 0%,100% { transform: none } 20% { transform: translateX(-3px) rotate(-1.5deg) } 40% { transform: translateX(3px) rotate(1.5deg) } 60% { transform: translateX(-2px) rotate(-1deg) } 80% { transform: translateX(2px) rotate(.8deg) } }
+/* legendary / mythic: longer, stronger shake + glow leaking from the seam */
+.chest3d.drama4.opening { animation: chest-shake-hard .14s linear 0s 7; }
+.chest3d.drama5.opening { animation: chest-shake-mythic .11s linear 0s 11; }
+.chest3d.drama4.opening .chest-lid3d { transition-delay: 1.05s; }
+.chest3d.drama5.opening .chest-lid3d { transition-delay: 1.3s; }
+@keyframes chest-shake-hard { 0%,100% { transform: none } 25% { transform: translate(-4px,-1px) rotate(-2.5deg) } 75% { transform: translate(4px,1px) rotate(2.5deg) } }
+@keyframes chest-shake-mythic { 0%,100% { transform: none } 25% { transform: translate(-7px,-3px) rotate(-4deg) scale(1.02) } 75% { transform: translate(7px,2px) rotate(4deg) scale(1.02) } }
+.chest-seam { position: absolute; left: 4%; right: 4%; bottom: calc(6% + var(--w) * .5 - 6px); height: 12px; border-radius: 50%; opacity: 0; pointer-events: none; z-index: 3; }
+.chest3d.drama4 .chest-seam { background: radial-gradient(ellipse, #ffb347, rgba(255,140,0,.4) 50%, transparent 72%); box-shadow: 0 0 30px 10px rgba(255,140,0,.45); }
+.chest3d.drama5 .chest-seam { background: radial-gradient(ellipse, #ff6a5a, rgba(230,30,30,.5) 50%, transparent 72%); box-shadow: 0 0 40px 16px rgba(230,30,30,.55); }
+.chest3d.drama4.opening .chest-seam, .chest3d.drama5.opening .chest-seam { animation: seam 0.3s ease-in-out infinite alternate; }
+@keyframes seam { from { opacity: .35; transform: scaleX(.9) } to { opacity: 1; transform: scaleX(1.05) } }
+/* golden beam + sparkles */
+.chest-beam { position: absolute; left: 50%; bottom: calc(6% + var(--w) * .5); width: 150%; height: 190%; transform: translateX(-50%) scaleY(0); transform-origin: 50% 100%;
+  background: conic-gradient(from 160deg at 50% 100%, transparent 0deg, rgba(255,225,140,.55) 15deg, rgba(255,240,190,.15) 25deg, rgba(255,225,140,.5) 35deg, transparent 40deg);
+  filter: blur(3px); opacity: 0; transition: transform .8s ease-out .7s, opacity .8s .7s; pointer-events: none; }
+.chest3d.drama4 .chest-beam { background: conic-gradient(from 160deg at 50% 100%, transparent 0deg, rgba(255,170,60,.6) 15deg, rgba(255,220,150,.2) 25deg, rgba(255,170,60,.55) 35deg, transparent 40deg); }
+.chest3d.drama5 .chest-beam { background: conic-gradient(from 160deg at 50% 100%, transparent 0deg, rgba(255,80,60,.6) 15deg, rgba(255,190,150,.2) 25deg, rgba(255,80,60,.55) 35deg, transparent 40deg); }
+.chest3d.open .chest-beam { transform: translateX(-50%) scaleY(1); opacity: 1; animation: beam-pulse 3s ease-in-out 1.5s infinite; }
+@keyframes beam-pulse { 50% { opacity: .65 } }
+.chest-sparkles { position: absolute; left: 10%; right: 10%; bottom: calc(6% + var(--w) * .5); height: 180%; pointer-events: none; opacity: 0; transition: opacity .5s 1s; }
+.chest3d.open .chest-sparkles { opacity: 1; }
+.chest-sparkles i { position: absolute; bottom: 0; left: var(--x); width: var(--s); height: var(--s); border-radius: 50%; background: #fff3c0; box-shadow: 0 0 6px 2px #ffd666; opacity: 0; }
+.chest3d.open .chest-sparkles i { animation: sparkle 2.6s ease-out var(--d) infinite; }
+@keyframes sparkle { 0% { opacity: 0; transform: translate(0,0) scale(.4) } 20% { opacity: 1 } 100% { opacity: 0; transform: translate(12px,-150px) scale(1.1) } }
+.chest3d.small .chest-beam, .chest3d.small .chest-sparkles, .chest3d.small .chest-seam { display: none; }
+.chest-head .chest-icon { display: inline-flex; }
+/* item cards */
+.reveal-item { display: flex; align-items: center; gap: 12px; position: relative; overflow: hidden; padding: 10px 14px; border: 1px solid #6b4f22; border-radius: 14px;
+  background: linear-gradient(180deg, rgba(40,30,18,.95), rgba(14,10,7,.95)); box-shadow: 0 6px 16px rgba(0,0,0,.5); animation: pop .55s cubic-bezier(.2,1.6,.4,1) both; }
+.reveal-item b { display: flex; flex-direction: column; }
+.ri-tier { font-style: normal; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 800; }
+.ri-icon { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 10px; background: radial-gradient(circle, rgba(255,220,140,.15), rgba(0,0,0,.3)); flex-shrink: 0; }
+.reveal-item.rare { border-color: var(--rar); box-shadow: 0 0 14px color-mix(in srgb, var(--rar) 55%, transparent), inset 0 0 18px color-mix(in srgb, var(--rar) 25%, transparent); }
+.reveal-item.rare .ri-icon { background: radial-gradient(circle, color-mix(in srgb, var(--rar) 45%, transparent), rgba(0,0,0,.3)); }
+.reveal-item.r4, .reveal-item.r5 { animation: pop-epic .9s cubic-bezier(.2,1.6,.4,1) both; }
+.reveal-item.r5 { box-shadow: 0 0 22px color-mix(in srgb, var(--rar) 75%, transparent), inset 0 0 22px color-mix(in srgb, var(--rar) 35%, transparent); }
+@keyframes pop { from { opacity: 0; transform: translateY(-40px) scale(.6) } to { opacity: 1; transform: none } }
+@keyframes pop-epic { 0% { opacity: 0; transform: translateY(-50px) scale(.4) } 60% { opacity: 1; transform: scale(1.08) } 100% { transform: none } }
+/* coin shimmer */
+.reveal-item.rcoin { border-color: #b88a26; }
+.reveal-item.rcoin::after, .reveal-item.rare::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(110deg, transparent 35%, rgba(255,235,160,.28) 50%, transparent 65%); transform: translateX(-100%); animation: shimmer-sweep 3.2s ease-in-out 1.2s infinite; }
+@keyframes shimmer-sweep { 0% { transform: translateX(-100%) } 45%,100% { transform: translateX(100%) } }
+@media (prefers-reduced-motion: reduce) {
+  .chest3d, .chest3d *, .reveal-item, .reveal-item::after, .reveal-overlay { animation: none !important; transition: none !important; }
+  .chest-sparkles { display: none; }
+}
+.reveal-item small { margin-left: auto; color: var(--gold2, #f0d58a); font-weight: 800; }

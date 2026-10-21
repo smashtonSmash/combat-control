@@ -1,3 +1,4 @@
+import { ChestArt } from '../components/ChestArt'
 import { useEffect, useRef, useState } from 'react'
 import type { Character, Chest, Item } from '../types'
 import { uid } from '../types'
@@ -96,7 +97,7 @@ export default function Loot({ chests, saveChest, deleteChest, characters, onGiv
       {chest && (
         <div className="loot-chest">
           <div className="chest-head">
-            <span className="chest-icon">🧰</span>
+            <span className="chest-icon"><ChestArt phase={chest.revealedAt ? 'open' : 'closed'} small /></span>
             {readOnly ? <b>{chest.name}</b> : <input className="grow" value={chest.name} onChange={(e) => saveChest({ ...chest, name: e.target.value })} />}
             {!readOnly && online && (chest.revealedAt
               ? <button className="btn sm danger" onClick={() => saveChest({ ...chest, revealedAt: null })}>🔒 Close chest</button>

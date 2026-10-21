@@ -27,3 +27,17 @@ describe('spell scrolls', () => {
     expect(c.inventory).toHaveLength(0)
   })
 })
+
+import { revealOrder, chestDrama } from './reveal'
+describe('reveal order', () => {
+  const it_ = (id: string, tier?: string) => ({ id, name: id, kind: 'armor', qty: 1, tier }) as never
+  const chest = { id: 'c', name: 'C', items: [it_('m', 'mythic'), it_('g', 'green'), it_('p'), it_('l', 'legendary'), it_('b', 'blue')], gold: 5, silver: 0, pouches: [] } as never
+  it('lowest to highest, untiered + coins first', () => {
+    expect(revealOrder(chest).map((e) => e.key)).toEqual(['p', 'coins', 'g', 'b', 'l', 'm'])
+  })
+  it('dramatic pause before legendary/mythic', () => {
+    const d = revealOrder(chest).map((e) => e.delay)
+    expect(d[4] - d[3]).toBeGreaterThan(0.5); expect(d[5] - d[4]).toBeGreaterThan(0.9)
+    expect(chestDrama(chest)).toBe(5)
+  })
+})
