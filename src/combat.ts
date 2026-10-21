@@ -1,7 +1,7 @@
 import type { Combatant, DamageType, Trait } from './types'
 
 export function matchingTraits(target: Combatant, type: DamageType): Trait[] {
-  return target.traits.filter((t) => t.damageTypes.includes(type))
+  return [...target.traits, ...(target.tempTraits ?? [])].filter((t) => t.damageTypes.includes(type))
 }
 
 export interface DamageOutcome {

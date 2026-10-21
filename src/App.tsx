@@ -9,6 +9,8 @@ import Campaign from './screens/Campaign'
 import Casino from './screens/Casino'
 import Loot from './screens/Loot'
 import { addItem } from './inventory'
+import { effectiveSlots, isCaster } from './components/Spells'
+import { loadSpells, restoreAll, spendSlot } from './spells'
 import { applyDelta } from './casino/money'
 import { listCampaigns, useCampaign, useSession, type CampaignInfo } from './cloud'
 import { CloudSheet } from './components/Cloud'
@@ -216,6 +218,23 @@ export default function App() {
     return true
   }
 
+  // ---- spells ----
+  // warm the offline cache with the SRD spell list
+  useEffect(() => { const t = setTimeout(() => { loadSpells().catch(() => {}) }, 4000); return () => clearTimeout(t) }, [])
+  const spendCharSlot = (charId: string, level: number) => {
+    const c = allChars.find((x) => x.id === charId)
+    if (!c) return
+    const ns = spendSlot(effectiveSlots(c), level)
+    if (ns) saveCharacter({ ...c, slots: ns })
+  }
+  const restAll = (kind: 'long' | 'short') => {
+    for (const c of allChars) {
+      if (!isCaster(c)) continue
+      const sl = effectiveSlots(c)
+      if (kind === 'long' || sl.pact) saveCharacter({ ...c, slots: restoreAll(sl) })
+    }
+  }
+
   const deleteCharacter = (id: string) => (online ? cloud.deleteChar(id) : setCharacters((cs) => cs.filter((c) => c.id !== id)))
 
   return (
@@ -236,7 +255,7 @@ export default function App() {
       {online && !isDM && tab === 'battle' && <div className="live-banner">👁 Live view of {active!.name}’s battle — your DM runs combat. Damage they deal updates your sheet’s HP.</div>}
       {online && cloud.error && <div className="live-banner" style={{ borderColor: '#a83a28', background: '#2a1210' }}>⚠ Sync problem: {cloud.error} <button className="link" onClick={() => cloud.setError('')}>dismiss</button></div>}
       <main key={tab} className="fade-in">
-        {tab === 'battle' && <Battle encounter={encounter} setEncounter={setEnc} characters={characters} />}
+        {tab === 'battle' && <Battle encounter={encounter} setEncounter={setEnc} characters={characters} onSpendSlot={spendCharSlot} onRest={restAll} />}
         {tab === 'characters' && (
           <>
             <Characters characters={characters} onSave={saveCharacter} onDelete={deleteCharacter} giveTargets={allChars.map((c) => ({ id: c.id, name: c.name }))} onGive={giveBetween} />

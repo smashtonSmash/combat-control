@@ -78,6 +78,12 @@ export interface Character extends ArmorFields {
   /** current HP (synced with the DM's battle when playing online) */
   currentHp?: number
   inventory?: Item[]
+  /** show the Spells section even for non-caster classes */
+  spellcasting?: boolean
+  spells?: import('./spells').CharSpell[]
+  slots?: import('./spells').Slots
+  /** slots edited by hand; don't auto-fill from class/level */
+  slotsManual?: boolean
 }
 
 export type Side = 'party' | 'monster'
@@ -98,6 +104,8 @@ export interface Combatant extends ArmorFields {
   characterId?: string
   sample?: boolean
   shrugUsed?: boolean
+  /** temporary effects for this battle (e.g. resistance from a spell) */
+  tempTraits?: Trait[]
 }
 
 export interface LogEntry {

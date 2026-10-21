@@ -9,6 +9,7 @@ import type { Tier } from '../armor'
 import { ARMOR_CATALOG, TIERS, TIER_COLORS, TIER_LABELS, TIER_SHORT, armorAc, armorById, armorLabel, canBeUnderLayer, combinedArmor, profFromLevel } from '../armor'
 import { charProf } from '../seed'
 import { ItemCard, ItemPicker } from '../components/Items'
+import { SpellsSection } from '../components/Spells'
 import { addItem, equip, removeItem, unequip, useItem } from '../inventory'
 
 const blank = (): Character => ({
@@ -112,6 +113,8 @@ function CharacterSheet({ c, isNew, onClose, onSave, onDelete, onPersist, giveTa
       <TraitEditor traits={d.traits} onChange={(t) => set({ traits: t })} />
       <div className="mini-label">Attacks</div>
       <AttackEditor attacks={d.attacks} onChange={(a) => set({ attacks: a })} />
+      <div className="mini-label">✨ Spells</div>
+      <SpellsSection d={d} commit={(n) => { setD(n); if (!isNew && n.name.trim()) onPersist(n) }} />
       <div className="mini-label">🎒 Inventory</div>
       <Inventory d={d} commit={(n) => { setD(n); if (!isNew && n.name.trim()) onPersist(n) }} giveTargets={isNew ? [] : giveTargets} onGive={onGive} />
       <label className="field"><span>Notes</span>
