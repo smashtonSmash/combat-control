@@ -6,6 +6,8 @@ import Battle from './screens/Battle'
 import Characters from './screens/Characters'
 import Dice from './screens/Dice'
 import Campaign from './screens/Campaign'
+import Casino from './screens/Casino'
+import { applyDelta } from './casino/money'
 import { listCampaigns, useCampaign, useSession, type CampaignInfo } from './cloud'
 import { CloudSheet } from './components/Cloud'
 import { uid } from './types'
@@ -19,6 +21,7 @@ const TABS = [
   { id: 'characters', label: 'Characters', icon: '🛡️' },
   { id: 'dice', label: 'Dice', icon: '🎲' },
   { id: 'campaign', label: 'Campaign', icon: '📜' },
+  { id: 'casino', label: 'Casino', icon: '🎰' },
 ] as const
 type Tab = (typeof TABS)[number]['id']
 
@@ -176,6 +179,18 @@ export default function App() {
         : x),
     }))
   }
+  // Casino: change a character's coins (synced like any sheet edit). Uses the latest data via a ref.
+  const charsRef = useRef(characters); charsRef.current = characters
+  const adjustCoins = (id: string, delta: number) => {
+    const c = charsRef.current.find((x) => x.id === id)
+    if (!c) return false
+    const purse = applyDelta(c.purse, delta)
+    if (!purse) return false
+    const next = { ...c, purse }
+    charsRef.current = charsRef.current.map((x) => (x.id === id ? next : x))
+    saveCharacter(next)
+    return true
+  }
   const deleteCharacter = (id: string) => (online ? cloud.deleteChar(id) : setCharacters((cs) => cs.filter((c) => c.id !== id)))
 
   return (
@@ -205,6 +220,7 @@ export default function App() {
         )}
         {tab === 'dice' && <Dice history={history} setHistory={setHistory} />}
         {tab === 'campaign' && <Campaign pages={pages} setPages={setPages} />}
+        {tab === 'casino' && <Casino characters={characters} adjust={adjustCoins} />}
       </main>
       {cloudOpen && (
         <CloudSheet session={session} campaigns={campaigns} activeId={active?.id ?? null} members={cloud.members}

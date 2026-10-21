@@ -314,3 +314,53 @@ h1, h2, h3, h4 { font-family: var(--serif); color: var(--gold2); letter-spacing:
 .join-code { font-family: var(--serif); font-size: 34px; letter-spacing: .25em; text-align: center; padding: 10px; margin: 6px 0; border: 1px dashed var(--gold, #d9b45a); border-radius: 12px; color: var(--gold2, #f0d58a); user-select: all; }
 .live-banner { margin: 8px 12px 0; padding: 8px 12px; border-radius: 10px; font-size: 13px; background: #102016; border: 1px solid #2f6b3c; }
 .topbar { display: flex; align-items: center; }
+/* ---------- Casino ---------- */
+.purse-bar { display: flex; align-items: center; gap: 8px; margin: 10px 0; padding: 8px 12px; border-radius: 12px; background: #120f0c; border: 1px solid var(--line); }
+.purse-bar span:first-child { margin-right: auto; }
+.coin-pill { font-weight: 800; padding: 3px 10px; border-radius: 999px; font-size: 14px; }
+.coin-pill.gold { background: linear-gradient(180deg, #f6d77a, #b88a26); color: #2a1d05; }
+.coin-pill.silver { background: linear-gradient(180deg, #e7edf2, #8f9aa5); color: #1a1f24; }
+.game-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.game-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; min-height: 72px; text-align: left; border-radius: 14px; border: 1px solid var(--line); background: #120f0c; color: inherit; }
+.game-tile.on { border-color: var(--gold, #d9b45a); box-shadow: 0 0 14px rgba(217,180,90,.3); background: linear-gradient(180deg, #2a2112, #15110c); }
+.game-icon { font-size: 22px; } .game-tile small { font-size: 11px; opacity: .7; }
+.felt { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 18px; background: radial-gradient(ellipse at 50% 0%, #1f5a37, #0f2e1d 70%); border: 2px solid #6b4f22; box-shadow: inset 0 0 40px rgba(0,0,0,.5); }
+.table-area { min-height: 260px; }
+.card-row { display: flex; gap: 6px; flex-wrap: wrap; min-height: 84px; }
+.pcard { position: relative; width: 58px; height: 82px; border-radius: 8px; background: linear-gradient(180deg, #fffdf6, #efe7d4); color: #1b1712; box-shadow: 0 3px 8px rgba(0,0,0,.45); font-weight: 800; animation: dealin .35s ease-out both; }
+.pcard.red { color: #b3261e; }
+.pcard .pc-tl { position: absolute; top: 4px; left: 6px; font-size: 13px; line-height: 1; text-align: center; }
+.pcard .pc-br { position: absolute; bottom: 4px; right: 6px; font-size: 13px; line-height: 1; text-align: center; transform: rotate(180deg); }
+.pcard .pc-mid { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 28px; }
+.pcard.back { background: repeating-linear-gradient(45deg, #6b1f1a 0 6px, #8a2a22 6px 12px); border: 3px solid #f1e3c0; display: flex; align-items: center; justify-content: center; color: #f1d58a; font-size: 20px; }
+@keyframes dealin { from { transform: translateY(-30px) rotate(-8deg); opacity: 0 } to { transform: none; opacity: 1 } }
+.bj-hand { padding: 6px; border-radius: 12px; border: 1px solid transparent; margin-bottom: 6px; }
+.bj-hand.active { border-color: #f1d58a; box-shadow: 0 0 12px rgba(241,213,138,.35); }
+.hand-meta { display: flex; gap: 10px; align-items: center; font-size: 13px; margin-top: 4px; }
+.hv { background: #0b1d12; border: 1px solid #3c7a4f; padding: 1px 8px; border-radius: 999px; }
+.outcome { margin-left: auto; font-weight: 900; letter-spacing: .06em; }
+.o-blackjack .outcome, .o-win .outcome { color: #f6d77a; } .o-lose .outcome, .o-bust .outcome { color: #f08a78; } .o-push .outcome { color: #c9d2dc; }
+.bj-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.casino-msg { text-align: center; font-weight: 800; font-size: 16px; padding: 8px; border-radius: 10px; background: rgba(0,0,0,.35); }
+.bet-input input { width: 64px; text-align: center; font-size: 18px; font-weight: 800; min-height: 44px; }
+.bet-input .row { align-items: center; gap: 6px; }
+.wheel-wrap { position: relative; display: flex; justify-content: center; padding-top: 16px; }
+.wheel-pointer { position: absolute; top: 0; left: 50%; transform: translateX(-50%); color: #f1d58a; font-size: 22px; z-index: 2; text-shadow: 0 2px 4px #000; }
+.wheel { position: relative; width: 270px; height: 270px; border-radius: 50%; border: 8px solid #6b4f22; box-shadow: 0 6px 20px rgba(0,0,0,.6), inset 0 0 0 2px #d9b45a; }
+.wheel-num { position: absolute; left: 50%; top: 50%; width: 20px; margin: -8px 0 0 -10px; text-align: center; font-size: 10px; font-weight: 800; color: #fff; transform-origin: 50% 50%; }
+.wheel-hub { position: absolute; inset: 70px; border-radius: 50%; background: radial-gradient(circle, #e8c66a, #6b4f22); display: flex; align-items: center; justify-content: center; font-family: var(--serif); font-size: 34px; font-weight: 800; color: #1b1712; box-shadow: 0 0 0 4px #2a2112; }
+.r-history { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; }
+.rball { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: #fff; }
+.rball.red { background: #b3261e; } .rball.black { background: #1b1712; border: 1px solid #555; } .rball.green { background: #2f7d3a; }
+.rboard { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
+.rboard .zero { grid-column: 1 / -1; }
+.rcell { position: relative; min-height: 38px; border-radius: 6px; font-weight: 800; font-size: 15px; color: #fff; border: 1px solid rgba(255,255,255,.25); background: #0f2e1d; }
+.rcell.red { background: #9e2219; } .rcell.black { background: #17130f; } .rcell.green { background: #2f7d3a; }
+.rcell.col { background: #23402c; font-size: 12px; }
+.rcell.hit { outline: 3px solid #f6d77a; box-shadow: 0 0 14px #f6d77a; }
+.rcell:active { transform: scale(.95); }
+.rboard-outside { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
+.rcell.out { min-height: 44px; font-size: 13px; }
+.diamond.red { color: #ff6b5e; }
+.chip-stack { position: absolute; right: 2px; bottom: 2px; font-size: 9px; padding: 1px 4px; border-radius: 999px; background: radial-gradient(circle, #f6d77a, #b88a26); color: #2a1d05; border: 1px dashed #fff8; }
+.center { text-align: center; }
