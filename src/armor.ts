@@ -8,8 +8,12 @@ export type Tier = (typeof TIERS)[number]
 export const LEGENDARY_COLOR = '#f08a2a'
 export const MYTHIC_COLOR = '#e5383b'
 export const TIER_COLORS: Record<Tier, string> = { green: '#4fbf63', blue: '#4a8fe7', purple: '#a35de0', legendary: LEGENDARY_COLOR, mythic: MYTHIC_COLOR }
-export const TIER_LABELS: Record<Tier, string> = { green: 'Green · Standard', blue: 'Blue · Rare', purple: 'Purple · Ultra rare', legendary: 'Legendary', mythic: 'Mythic' }
-export const TIER_SHORT: Record<Tier, string> = { green: 'Green', blue: 'Blue', purple: 'Purple', legendary: 'Legendary', mythic: 'Mythic' }
+/** Display names (ids stay green/blue/purple/legendary/mythic in saved data). */
+export const TIER_LABELS: Record<Tier, string> = { green: 'Common', blue: 'Rare', purple: 'Ultra Rare', legendary: 'Legendary', mythic: 'Mythic' }
+export const TIER_SHORT: Record<Tier, string> = { green: 'Common', blue: 'Rare', purple: 'Ultra Rare', legendary: 'Legendary', mythic: 'Mythic' }
+/** Old display names in stored text → new ones ('Purple Padded Armor' → 'Ultra Rare Padded Armor'). Idempotent. */
+const OLD_TIER_NAMES: Record<string, string> = { Green: 'Common', Blue: 'Rare', Purple: 'Ultra Rare' }
+export const renameTierText = (s: string) => s.replace(/\b(Green|Blue|Purple)(?= [A-Z])/g, (m) => OLD_TIER_NAMES[m])
 
 /** Data version: v2 = tier 'mythic' means the new red top tier. Older data's 'mythic' is now 'legendary'. */
 export const TIER_VERSION = 2

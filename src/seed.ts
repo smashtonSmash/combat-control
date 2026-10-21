@@ -6,7 +6,7 @@ export const sampleCharacters = (): Character[] => [
   {
     id: 'sample-thorin', sample: true, name: 'Thorin', cls: 'Fighter', level: 3, race: 'Mountain Dwarf',
     abilities: { str: 16, dex: 12, con: 16, int: 10, wis: 12, cha: 8 },
-    ac: 12, armor: 'Purple Padded Armor', purse: { gold: 12, silver: 7 }, maxHp: 31, initMod: 1,
+    ac: 12, armor: 'Ultra Rare Padded Armor', purse: { gold: 12, silver: 7 }, maxHp: 31, initMod: 1,
     armorId: 'padded', armorTier: 'purple', tierV: 2,
     traits: [
       { id: uid(), name: 'Dwarven Resilience', damageTypes: ['poison'], effect: 'resistance',
@@ -46,10 +46,10 @@ export const extraSamples = (): Character[] => [
   {
     id: 'sample-vex', sample: true, name: 'Vex', cls: 'Rogue', level: 3, race: 'Tiefling',
     abilities: { str: 8, dex: 16, con: 12, int: 12, wis: 10, cha: 14 },
-    ac: 14, armor: 'Purple Studded Leather Armor', armorId: 'studded', armorTier: 'purple', maxHp: 21, initMod: 3,
+    ac: 14, armor: 'Ultra Rare Studded Leather Armor', armorId: 'studded', armorTier: 'purple', maxHp: 21, initMod: 3,
     purse: { gold: 3, silver: 22 }, traits: [],
     attacks: [{ id: uid(), name: 'Rapier', toHit: 5, damage: '1d8+3', damageType: 'piercing' }],
-    notes: 'SAMPLE character in Purple Studded Leather (d6 deflect).',
+    notes: 'SAMPLE character in Ultra Rare Studded Leather (d6 deflect).',
   },
 ]
 

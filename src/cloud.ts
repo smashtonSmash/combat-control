@@ -4,7 +4,7 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from './supabaseConfig'
 import type { Character, Chest, Encounter } from './types'
 import { migrateTiers } from './armor'
 import { migrateChestItems, migrateInventory } from './catalog'
-const normEnc = (e: Encounter | null) => (e ? { ...e, combatants: (e.combatants ?? []).map(migrateTiers) } : e)
+const normEnc = (e: Encounter | null) => (e ? { ...e, combatants: (e.combatants ?? []).map((c) => migrateInventory(migrateTiers(c))) } : e)
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },

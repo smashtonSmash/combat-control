@@ -11,7 +11,7 @@ describe('inventory', () => {
     const a = armorItem('padded', 'purple'), b = armorItem('leather', 'green')
     let c = addItem(addItem(base(), a), b)
     c = equip(c, a.id)
-    expect(c.armorId).toBe('padded'); expect(c.armorTier).toBe('purple'); expect(c.ac).toBe(13); expect(c.armor).toBe('Purple Padded Armor')
+    expect(c.armorId).toBe('padded'); expect(c.armorTier).toBe('purple'); expect(c.ac).toBe(13); expect(c.armor).toBe('Ultra Rare Padded Armor')
     const r = combinedArmor({ ...c, prof: 2 }); expect(r.reduce.bludgeoning).toBe(2); expect(r.acVs.bludgeoning).toBe(1)
     c = equip(c, b.id)
     expect(c.inventory!.filter((i) => i.equipped).map((i) => i.id)).toEqual([b.id]); expect(c.armorId).toBe('leather')

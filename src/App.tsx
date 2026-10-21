@@ -128,6 +128,7 @@ export default function App() {
     setCharacters((cs) => (cs.some(needs) ? cs.map(migrateTiers) : cs))
     // old Potion of Healing (2d4+2) → Green Healing Potion
     setCharacters((cs) => { const n = cs.map(migrateInventory); return n.some((x, i) => x !== cs[i]) ? n : cs })
+    setEncounter((e) => { const cs = e.combatants.map(migrateInventory); return cs.some((x, i) => x !== e.combatants[i]) ? { ...e, combatants: cs } : e })
     setLocalChests((ks) => { const n = ks.map(migrateChestItems); return n.some((x, i) => x !== ks[i]) ? n : ks })
     setEncounter((e) => (e.combatants.some(needs) ? { ...e, combatants: e.combatants.map(migrateTiers) } : e))
   }, [])
@@ -138,7 +139,7 @@ export default function App() {
     localStorage.setItem('dnd.migrated.armor1', '1')
     const isOldThorin = (t: { id?: string; armorId?: string }) => !t.armorId
     const fixThorin = <T extends { traits: Character['traits']; armorId?: string }>(x: T): T => ({
-      ...x, ac: 12, armor: 'Purple Padded Armor', armorId: 'padded', armorTier: 'purple',
+      ...x, ac: 12, armor: 'Ultra Rare Padded Armor', armorId: 'padded', armorTier: 'purple',
       traits: x.traits.filter((t) => t.name !== 'Homebrew Padded Armor'),
     })
     let added: Character[] = []

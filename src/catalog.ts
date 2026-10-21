@@ -4,7 +4,7 @@
  */
 import type { DamageType, Item } from './types'
 import { uid } from './types'
-import { TIERS, TIER_SHORT, armorById, type ArmorCategory, type Tier } from './armor'
+import { TIERS, TIER_SHORT, armorById, renameTierText, type ArmorCategory, type Tier } from './armor'
 
 // ---------- A) Armor prices ----------
 /** Light armor price by tier (gold). */
@@ -94,13 +94,18 @@ export function migrateItem(it: Item): Item {
   }
   return it
 }
-export function migrateInventory<T extends { inventory?: Item[] }>(c: T): T {
-  if (!c.inventory?.some((i) => i.kind === 'consumable' && !i.catalogKey && (i.name === 'Potion of Healing' || i.heal === '2d4+2'))) return c
-  return { ...c, inventory: c.inventory.map(migrateItem) }
+const OLD_NAME = /\b(Green|Blue|Purple) [A-Z]/
+const needsItem = (i: Item) => (i.kind === 'consumable' && !i.catalogKey && (i.name === 'Potion of Healing' || i.heal === '2d4+2')) || (!!i.tier && OLD_NAME.test(i.name))
+const fixItem = (i: Item): Item => { const m = migrateItem(i); return m.tier && OLD_NAME.test(m.name) ? { ...m, name: renameTierText(m.name) } : m }
+/** Migrations for stored characters: old potions, old tier display names (Green/Blue/Purple → Common/Rare/Ultra Rare). */
+export function migrateInventory<T extends { inventory?: Item[]; armor?: string }>(c: T): T {
+  const armorOld = typeof c.armor === 'string' && OLD_NAME.test(c.armor)
+  if (!armorOld && !c.inventory?.some(needsItem)) return c
+  return { ...c, ...(armorOld ? { armor: renameTierText(c.armor!) } : {}), ...(c.inventory ? { inventory: c.inventory.map((i) => (needsItem(i) ? fixItem(i) : i)) } : {}) }
 }
 export function migrateChestItems<T extends { items: Item[] }>(k: T): T {
-  if (!k.items.some((i) => i.kind === 'consumable' && !i.catalogKey && (i.name === 'Potion of Healing' || i.heal === '2d4+2'))) return k
-  return { ...k, items: k.items.map(migrateItem) }
+  if (!k.items.some(needsItem)) return k
+  return { ...k, items: k.items.map((i) => (needsItem(i) ? fixItem(i) : i)) }
 }
 
 /** Gold price of any item (catalog consumable, armor by tier, or stored price). */

@@ -21,12 +21,12 @@ describe('pricing', () => {
   it('shop adjust % and buying deducts gold (makes change)', () => {
     expect(shopPriceSilver(35, 10)).toBe(385)
     const r = buy(hero({ purse: { gold: 40, silver: 0 } }), catalogToItem(catalogItem('heal-blue')!), shopPriceSilver(35, 10))
-    expect(r.ok).toBe(true); expect(r.char.purse).toEqual({ gold: 1, silver: 5 }); expect(r.char.inventory![0].name).toBe('Blue Healing Potion')
+    expect(r.ok).toBe(true); expect(r.char.purse).toEqual({ gold: 1, silver: 5 }); expect(r.char.inventory![0].name).toBe('Rare Healing Potion')
     expect(buy(hero({ purse: { gold: 5, silver: 0 } }), catalogToItem(catalogItem('heal-blue')!), 350).ok).toBe(false)
   })
   it('migrates old Potion of Healing to Green Healing Potion', () => {
     const c = migrateInventory(hero({ inventory: [{ id: 'p', name: 'Potion of Healing', kind: 'consumable', qty: 2, heal: '2d4+2', description: '' }] }))
-    expect(c.inventory![0]).toMatchObject({ name: 'Green Healing Potion', heal: '2d8+2', catalogKey: 'heal-green', qty: 2, tier: 'green' })
+    expect(c.inventory![0]).toMatchObject({ name: 'Common Healing Potion', heal: '2d8+2', catalogKey: 'heal-green', qty: 2, tier: 'green' })
   })
 })
 
@@ -74,7 +74,7 @@ describe('effects', () => {
   it('Mending Steel raises armor a tier until End combat', () => {
     let c = hero({ inventory: [armorItem('leather', 'blue')] }); c = equip(c, c.inventory![0].id)
     const m = withItem(c, 'mending-steel'); const r = useCatalogItem(m.c, m.it)
-    expect(r.char.armorTier).toBe('purple'); expect(r.char.armor).toMatch(/Purple/)
+    expect(r.char.armorTier).toBe('purple'); expect(r.char.armor).toMatch(/Ultra Rare/)
     expect(clearEffects(r.char, 'combat').armorTier).toBe('blue')
   })
   it('Second Wind: drop to 1 instead of 0, once', () => {
@@ -106,5 +106,16 @@ describe('ability generation', () => {
     const seq = [0, 0.99, 0.5, 0.2]; let i = 0
     const r = roll4d6(() => seq[i++]); expect(r.dice).toEqual([1, 6, 4, 2]); expect(r.total).toBe(12); expect(r.drop).toBe(0)
     for (const s of rollSet()) { expect(s.dice).toHaveLength(4); expect(s.total).toBeGreaterThanOrEqual(3); expect(s.total).toBeLessThanOrEqual(18) }
+  })
+})
+
+describe('tier display names', () => {
+  it('migrates stored names, keeps ids', () => {
+    const c = migrateInventory(hero({ armor: 'Purple Padded Armor + Green Padded under-layer', armorTier: 'purple',
+      inventory: [{ ...armorItem('leather', 'blue'), name: 'Blue Leather Armor' }, { id: 'g', name: 'Green Healing Potion', kind: 'consumable', qty: 1, tier: 'green', catalogKey: 'heal-green', description: '' }, { id: 'd', name: 'Blue Dagger', kind: 'weapon', qty: 1, description: '' }] }))
+    expect(c.armor).toBe('Ultra Rare Padded Armor + Common Padded under-layer'); expect(c.armorTier).toBe('purple')
+    expect(c.inventory!.map((i) => i.name)).toEqual(['Rare Leather Armor', 'Common Healing Potion', 'Blue Dagger'])
+    expect(migrateInventory(c)).toBe(c)
+    expect(armorItem('padded', 'purple').name).toBe('Ultra Rare Padded Armor')
   })
 })

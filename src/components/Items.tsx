@@ -44,7 +44,7 @@ export function ItemPicker({ onAdd, customSpells = [] }: { onAdd: (it: Item) => 
       </div>
       {open === 'potions' ? <ConsumablePicker onAdd={onAdd} /> : open === 'scroll' ? <ScrollPicker onAdd={onAdd} customSpells={customSpells} /> : open === 'quick' ? (
         <>
-          <button className="btn sm" onClick={() => onAdd(potionOfHealing())}>🧪 + Green Healing Potion (2d8+2) <small>10g</small></button>
+          <button className="btn sm" onClick={() => onAdd(potionOfHealing())}>🧪 + Common Healing Potion (2d8+2) <small>10g</small></button>
           <div className="mini-label">Armor</div>
           <div className="chips-row wrap">{ARMOR_CATALOG.map((a) => <button key={a.id} className={'chip ' + (armorId === a.id ? 'on' : '')} onClick={() => setArmorId(a.id)}>{a.name}</button>)}</div>
           <div className="chips-row wrap">{TIERS.map((t) => <button key={t} className={'chip ' + (tier === t ? 'on' : '')} style={{ color: TIER_COLORS[t] }} onClick={() => setTier(t)}>◆ {TIER_SHORT[t]} <small>{armorPrice(armorId, t)}g</small></button>)}</div>
