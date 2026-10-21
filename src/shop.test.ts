@@ -14,8 +14,8 @@ describe('pricing', () => {
     expect(armorPrice('leather', 'purple')).toBe(90)
     expect(ARMOR_PRICE_MULTIPLIER.medium).toBeTypeOf('number')
   })
-  it('catalog has all 27 items with prices', () => {
-    expect(CONSUMABLES).toHaveLength(27)
+  it('catalog has all 28 items with prices', () => {
+    expect(CONSUMABLES).toHaveLength(28)
     expect(catalogItem('mirror-long')!.price).toBe(400); expect(catalogItem('oil-piercing')!.price).toBe(8)
   })
   it('shop adjust % and buying deducts gold (makes change)', () => {

@@ -1,3 +1,6 @@
+import { DurBar } from '../components/DurBar'
+import { durLabel, durOf, equippedArmor, isBroken, maxDur, stateText } from '../durability'
+import { armorDamagedFlag } from '../durability'
 import { useState } from 'react'
 import type { Character } from '../types'
 import { DAMAGE_ICONS, uid } from '../types'
@@ -97,7 +100,8 @@ function CharacterSheet({ c, isNew, onClose, onSave, onDelete, onPersist, giveTa
   const [d, setD] = useState(c)
   const [picking, setPicking] = useState(false)
   const bonus = totalBonus(d)
-  const recalc = (n: Character): Character => {
+  const recalc = (n0: Character): Character => {
+    const n = { ...n0, armorDamaged: armorDamagedFlag(n0) || undefined }
     const ac = armorAc(n, abilityMod(n.abilities.dex))
     return { ...n, ...(ac !== null && !n.acManual ? { ac } : {}), ...(n.armorId ? { armor: armorLabel(n) } : {}) }
   }
@@ -256,6 +260,7 @@ function Inventory({ d, commit, giveTargets, onGive }: {
 }) {
   const inv = d.inventory ?? []
   const [sel, setSel] = useState<string | null>(null)
+  const [kitFor, setKitFor] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [giving, setGiving] = useState(false)
   const [msg, setMsg] = useState('')
@@ -282,12 +287,22 @@ function Inventory({ d, commit, giveTargets, onGive }: {
           {it.description && <div className="small muted spell-desc">{it.description}</div>}
           <div className="row">
             {it.atForge && <span className="small muted">🔥 At the forge — the DM taps Ready when it's done.</span>}
-            {!it.atForge && (it.kind === 'armor' || it.kind === 'weapon') && (it.equipped
+            {it.kind === 'armor' && it.tier && <span className="small">Durability <DurBar it={it} /> {stateText(it) && <b className={isBroken(it) ? 'bad' : 'warn'}>{stateText(it)}</b>}</span>}
+            {isBroken(it) && <span className="small muted">⛓ Broken — can't be equipped until a blacksmith repairs it (Shop & Forge).</span>}
+            {!it.atForge && !isBroken(it) && (it.kind === 'armor' || it.kind === 'weapon') && (it.equipped
               ? <button className="btn sm" onClick={() => { commit(unequip(d, it.id)); setMsg(`Unequipped ${it.name}.`) }}>Unequip</button>
               : <button className="btn sm primary" onClick={() => { commit(equip(d, it.id)); setMsg(it.kind === 'armor' ? `Equipped ${it.name} — AC and armor effects updated.` : `Equipped ${it.name} — added to attacks.`) }}>Equip</button>)}
             {it.coating && <span className="small">🧴 {it.coating.source}{it.coating.type ? ` → ${it.coating.type}` : ''}{it.coating.bonus ? ` +${it.coating.bonus.dice} ${it.coating.bonus.type}` : ''} (until long rest)</span>}
             {it.kind === 'scroll' && <button className="btn sm primary" onClick={() => { const r = useItem(d, it.id); commit(r.char); setMsg(r.message); if (it.qty <= 1) setSel(null) }}>📜 Use scroll</button>}
-            {it.kind === 'consumable' && <button className="btn sm primary" onClick={() => { const r = useItem(d, it.id); commit(r.char); setMsg(r.message); if (it.qty <= 1) setSel(null) }}>Use</button>}
+            {it.catalogKey === 'field-repair' && (kitFor === it.id ? (
+              <div className="kit-pick">
+                <span className="small warn">⏳ Use during a short rest. Which armor?</span>
+                {(d.inventory ?? []).filter((a) => a.kind === 'armor' && a.tier).map((a) => (
+                  <button key={a.id} className="btn sm" disabled={isBroken(a) || durOf(a) >= maxDur(a)} onClick={() => { const r = useItem(d, it.id, { targetId: a.id }); commit(r.char); setMsg(r.message); setKitFor(null); if (it.qty <= 1) setSel(null) }}>
+                    {a.name} {durLabel(a)}{isBroken(a) ? ' (Broken)' : ''}</button>))}
+                <button className="link small" onClick={() => setKitFor(null)}>Cancel</button>
+              </div>) : <button className="btn sm primary" onClick={() => setKitFor(it.id)}>🧰 Use kit…</button>)}
+            {it.kind === 'consumable' && it.catalogKey !== 'field-repair' && <button className="btn sm primary" onClick={() => { const r = useItem(d, it.id); commit(r.char); setMsg(r.message); if (it.qty <= 1) setSel(null) }}>Use</button>}
             {onGive && giveTargets.length > 0 && <button className="btn sm" onClick={() => setGiving(!giving)}>Give…</button>}
             <button className="btn sm danger" onClick={() => { if (confirm(`Drop ${it.name}${it.qty > 1 ? ` (all ${it.qty})` : ''}?`)) { commit(removeItem(d, it.id)); setMsg(`Dropped ${it.name}.`); close() } }}>Drop</button>
           </div>
@@ -363,7 +378,7 @@ function CharacterView({ c, onClose, onEdit, onPersist, giveTargets, onGive }: {
         <section className="cv-sec"><h3>⚔️ Equipped</h3>
           {equipped.length === 0 && !c.armor ? <div className="small muted">Nothing equipped.</div> : (
             <div className="cv-gear">
-              {c.armor && <div>🛡 {c.armor}{c.armorTier && <> <TierBadge tier={c.armorTier} /></>}</div>}
+              {c.armor && <div>🛡 {c.armor}{c.armorTier && <> <TierBadge tier={c.armorTier} /></>}{equippedArmor(c) && <> <DurBar it={equippedArmor(c)!} />{c.armorDamaged && <span className="badge dur-damaged">Damaged −1 AC</span>}</>}</div>}
               {equipped.filter((i) => i.kind !== 'armor').map((i) => <div key={i.id}>{KIND_ICON[i.kind]} {i.name}</div>)}
               {c.attacks.map((a) => <div key={a.id} className="small muted">🎯 {a.name} {fmtMod(a.toHit)} · {a.damage} {a.damageType}</div>)}
             </div>

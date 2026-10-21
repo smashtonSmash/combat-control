@@ -3,7 +3,8 @@ import type { ActiveEffect, Character, Item } from './types'
 import { uid } from './types'
 import { TIER_SHORT, armorById } from './armor'
 import { catalogItem, FUSE_FEES, FUSE_NOTE, nextTier, type CatalogItem } from './catalog'
-import { addItem, armorItem, equip, recalcArmor, removeItem } from './inventory'
+import { addItem, armorItem, equip, recalcArmor, removeItem, unequip } from './inventory'
+import { durOf, isBroken, maxDur, missing, repairCost, setDur } from './durability'
 import { rollExpression } from './dice'
 import type { Tier } from './armor'
 
@@ -22,7 +23,7 @@ export function refreshWeapons(c: Character): Character {
 }
 
 /** Use a catalog potion/scroll. ok=false → not used (item kept). */
-export function useCatalogItem(c: Character, it: Item, cat: CatalogItem = catalogItem(it.catalogKey)!): UseResult {
+export function useCatalogItem(c: Character, it: Item, cat: CatalogItem = catalogItem(it.catalogKey)!, opts: { targetId?: string } = {}): UseResult {
   const who = c.name || 'Someone'
   const spent = removeItem(c, it.id, 1)
   const fail = (message: string): UseResult => ({ char: c, message, ok: false })
@@ -59,8 +60,8 @@ export function useCatalogItem(c: Character, it: Item, cat: CatalogItem = catalo
       if (!a || !spent.armorTier) return fail('Equip armor first, then read Scroll of Mending Steel.')
       const up = nextTier(spent.armorTier)
       if (!up) return fail('Mythic armor is already the highest tier.')
-      const n = recalcArmor({ ...addEffect(spent, { key: cat.key, kind: 'mending', name: cat.name, until: 'combat', restoreTier: spent.armorTier, note: `Armor raised ${TIER_SHORT[spent.armorTier]} → ${TIER_SHORT[up]} for this fight` }), armorTier: up })
-      return { char: n, ok: true, message: `${who} reads ${it.name}: ${a.name} is repaired and fights as ${TIER_SHORT[up]} until End combat.` }
+      const n = recalcArmor({ ...setDur(addEffect(spent, { key: cat.key, kind: 'mending', name: cat.name, until: 'combat', restoreTier: spent.armorTier, note: `Armor raised ${TIER_SHORT[spent.armorTier]} → ${TIER_SHORT[up]} for this fight` }), a.id, maxDur(a)), armorTier: up })
+      return { char: n, ok: true, message: `${who} reads ${it.name}: ${a.name} is fully repaired (${maxDur(a)}/${maxDur(a)}) and fights as ${TIER_SHORT[up]} until End combat.` }
     }
     case 'whetstone':
       return { char: addEffect(spent, { key: cat.key, kind: 'whetstone', name: cat.name, until: 'long', note: 'Next weapon hit today is a critical hit' }), ok: true, message: `${who} hones their weapon with ${it.name}: the next hit today is a crit.` }
@@ -68,6 +69,16 @@ export function useCatalogItem(c: Character, it: Item, cat: CatalogItem = catalo
       return { char: addEffect(spent, { key: cat.key, kind: 'badge', name: cat.name, until: e.until ?? 'long', note: `${cat.desc}` }), ok: true, message: `${who} uses ${it.name}: ${cat.desc}` }
     case 'reminder':
       return { char: spent, ok: true, message: `${who} uses ${it.name}: ${cat.desc}` }
+    case 'repairKit': {
+      const a = (spent.inventory ?? []).find((x) => x.id === opts.targetId && x.kind === 'armor')
+      if (!a) return fail('Choose which armor to repair.')
+      if (isBroken(a)) return fail(`${a.name} is Broken — only a blacksmith can repair it.`)
+      if (!missing(a)) return fail(`${a.name} is already at full durability.`)
+      const r = rollExpression(e.dice), before = durOf(a)
+      const n = recalcArmor(setDur(spent, a.id, before + Math.max(0, r.total)))
+      const after = durOf(n.inventory!.find((x) => x.id === a.id)!)
+      return { char: n, ok: true, message: `${who} uses ${it.name} on ${a.name} (short rest): ${r.detail || r.total} → durability ${before}→${after}/${maxDur(a)}.` }
+    }
   }
 }
 
@@ -91,7 +102,7 @@ export function applySecondWind(c: Character | undefined, newHp: number): { hp: 
 }
 
 // ---------- Shop ----------
-const totalSilver = (c: Character) => (c.purse?.gold ?? 0) * 10 + (c.purse?.silver ?? 0)
+export const totalSilver = (c: Character) => (c.purse?.gold ?? 0) * 10 + (c.purse?.silver ?? 0)
 export function buy(c: Character, item: Item, priceSilver: number): { char: Character; ok: boolean; message: string } {
   if (totalSilver(c) < priceSilver) return { char: c, ok: false, message: `${c.name} can't afford ${item.name} (${fmtCost(priceSilver)}).` }
   const left = totalSilver(c) - priceSilver
@@ -128,3 +139,35 @@ export function fuse(c: Character, armorId: string, tier: Tier, opts: { atForge?
   return { char: n, ok: true, item: made, message: `${c.name} pays ${g.fee}g: two ${name}s → ${made.name}. ${FUSE_NOTE}${opts.atForge ? ' Marked “at the forge” until the DM taps Ready.' : ''}` }
 }
 export const forgeReady = (c: Character, itemId: string): Character => ({ ...c, inventory: (c.inventory ?? []).map((i) => (i.id === itemId ? { ...i, atForge: undefined } : i)) })
+
+// ---------- Durability ----------
+/** Wear the equipped (outer) armor. At 0 it breaks and is unequipped. */
+export function applyWear(c: Character, amount: number): { char: Character; message: string; itemId?: string; prev?: number } {
+  const a = equippedArmorItem(c)
+  if (!a || !a.tier || amount <= 0) return { char: c, message: '' }
+  const prev = durOf(a), now = Math.max(0, prev - amount)
+  let n = setDur(c, a.id, now)
+  if (now === 0) { n = unequip(n, a.id); return { char: n, itemId: a.id, prev, message: `${a.name} is BROKEN (0/${maxDur(a)}) and falls away — unequipped until a blacksmith repairs it.` } }
+  n = recalcArmor(n)
+  const dmg = now <= maxDur(a) / 2 && prev > maxDur(a) / 2
+  return { char: n, itemId: a.id, prev, message: `${a.name} durability ${prev}→${now}/${maxDur(a)}${dmg ? ' — now Damaged (−1 AC)' : ''}` }
+}
+/** Undo a wear: restore the previous durability (re-equip if it broke). */
+export function undoWear(c: Character, itemId: string, prev: number): Character {
+  const it = (c.inventory ?? []).find((x) => x.id === itemId)
+  if (!it) return c
+  const n = setDur(c, itemId, prev)
+  return durOf(it) === 0 && !it.equipped ? equip(n, itemId) : recalcArmor(n)
+}
+/** Blacksmith repair: points (or 'full'), cost per point by tier, Broken costs double. */
+export function blacksmithRepair(c: Character, itemId: string, points: number | 'full'): { char: Character; ok: boolean; message: string } {
+  const it = (c.inventory ?? []).find((x) => x.id === itemId)
+  if (!it || it.kind !== 'armor' || !it.tier) return { char: c, ok: false, message: 'Pick an armor.' }
+  const pts = Math.min(missing(it), points === 'full' ? missing(it) : Math.max(0, points))
+  if (!pts) return { char: c, ok: false, message: `${it.name} is already at full durability.` }
+  const cost = repairCost(it, pts) * 10
+  if (totalSilver(c) < cost) return { char: c, ok: false, message: `${c.name} needs ${cost / 10}g to repair ${pts} point${pts > 1 ? 's' : ''}.` }
+  const left = totalSilver(c) - cost
+  const n = recalcArmor(setDur({ ...c, purse: { gold: Math.floor(left / 10), silver: left % 10 } }, itemId, durOf(it) + pts))
+  return { char: n, ok: true, message: `${c.name} pays ${cost / 10}g: ${it.name} repaired ${durOf(it)}→${durOf(it) + pts}/${maxDur(it)}${isBroken(it) ? ' (Broken: double cost)' : ''}.` }
+}

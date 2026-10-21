@@ -1,3 +1,5 @@
+import { DurBar } from './DurBar'
+import { isBroken } from '../durability'
 import { useEffect, useMemo, useState } from 'react'
 import type { DamageType, Item, ItemKind } from '../types'
 import { DAMAGE_TYPES, uid } from '../types'
@@ -21,6 +23,8 @@ export function ItemCard({ it, selected, onClick, onPointerDown, dragging }: {
       <span className="item-name">{it.name}</span>
       <small className="item-sub">{it.scroll?.kind === 'spell' ? `${it.scroll.spell.level ? 'lv ' + it.scroll.spell.level : 'cantrip'} scroll` : it.kind === 'weapon' ? `${it.damage} ${it.damageType}` : it.heal ? `heals ${it.heal}` : it.tier ? <span style={{ color }}>◆ {TIER_SHORT[it.tier]}</span> : it.kind}</small>
       {it.qty > 1 && <span className="qty">×{it.qty}</span>}
+      {it.kind === 'armor' && it.tier && <DurBar it={it} small />}
+      {it.kind === 'armor' && isBroken(it) && <span className="broken-ribbon">BROKEN</span>}
       {it.atForge && <span className="forge-ribbon">🔥 AT THE FORGE</span>}
       {itemPrice(it) != null && <span className="item-price">{itemPrice(it)}g</span>}
     </button>

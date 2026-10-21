@@ -2,7 +2,10 @@ import { useState } from 'react'
 import type { Character, Item } from '../types'
 import { ARMOR_CATALOG, TIERS, TIER_COLORS, TIER_SHORT, type Tier } from '../armor'
 import { FUSE_FEES, FUSE_NOTE, armorPrice, shopPriceSilver } from '../catalog'
-import { buy, fmtCost, forgeReady, fuse, fuseGroups } from '../effects'
+import { blacksmithRepair, buy, fmtCost, forgeReady, fuse, fuseGroups } from '../effects'
+import { BROKEN_REPAIR_MULT, REPAIR_COST_PER_POINT } from '../catalog'
+import { isBroken, missing, repairCost } from '../durability'
+import { DurBar } from './DurBar'
 import { armorItem } from '../inventory'
 import { ConsumablePicker } from './Items'
 import { Segmented, Stepper } from './Sheet'
@@ -16,6 +19,7 @@ export function ShopForge({ characters, onSave }: { characters: Character[]; onS
   const [armorId, setArmorId] = useState(ARMOR_CATALOG[0].id)
   const [atForge, setAtForge] = useState(true)
   const [msg, setMsg] = useState('')
+  const [repairPts, setRepairPts] = useState<Record<string, number>>({})
   const c = characters.find((x) => x.id === charId)
   const sell = (item: Item, gold: number) => {
     if (!c) return
@@ -69,6 +73,22 @@ export function ShopForge({ characters, onSave }: { characters: Character[]; onS
             <div key={i.id} className="fuse-row"><span>🔥 {i.name} <small className="muted">at the forge</small></span>
               <button className="btn sm" onClick={() => { onSave(forgeReady(c, i.id)); setMsg(`✅ ${i.name} is ready for ${c.name}.`) }}>Ready</button></div>
           ))}
+          <h4 className="forge-h">🛠 Repair armor</h4>
+          <div className="fee-table small">{(Object.entries(REPAIR_COST_PER_POINT) as [Tier, number][]).map(([t, f]) => <span key={t}><b style={{ color: TIER_COLORS[t] }}>{TIER_SHORT[t]}</b> {f}g/pt</span>)}<span>Broken ×{BROKEN_REPAIR_MULT}</span></div>
+          {(c.inventory ?? []).filter((i) => i.kind === 'armor' && i.tier && missing(i) > 0).length === 0 && <div className="small muted">{c.name}'s armor is all at full durability.</div>}
+          {(c.inventory ?? []).filter((i) => i.kind === 'armor' && i.tier && missing(i) > 0).map((i) => {
+            const pts = Math.min(missing(i), repairPts[i.id] ?? missing(i))
+            return (
+              <div key={i.id} className="fuse-row repair-row">
+                <span>{i.name} <DurBar it={i} small /> {isBroken(i) && <b className="bad">Broken</b>}</span>
+                <span className="row">
+                  <input className="num-in" type="number" min={1} max={missing(i)} value={pts} aria-label="Points" onChange={(e) => setRepairPts({ ...repairPts, [i.id]: Math.max(1, Math.min(missing(i), +e.target.value || 1)) })} />
+                  <button className="btn sm primary" onClick={() => { const r = blacksmithRepair(c, i.id, pts); setMsg((r.ok ? '🛠 ' : '⚠ ') + r.message); if (r.ok) onSave(r.char) }}>+{pts} · {repairCost(i, pts)}g</button>
+                  <button className="btn sm" onClick={() => { const r = blacksmithRepair(c, i.id, 'full'); setMsg((r.ok ? '🛠 ' : '⚠ ') + r.message); if (r.ok) onSave(r.char) }}>Full · {repairCost(i, missing(i))}g</button>
+                </span>
+              </div>
+            )
+          })}
         </>
       )}
     </div>

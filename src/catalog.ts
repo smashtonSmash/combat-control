@@ -17,6 +17,20 @@ export function armorPrice(armorId: string | undefined, tier: Tier): number {
   return Math.round(ARMOR_PRICES[tier] * mult)
 }
 
+// ---------- Armor durability ----------
+/** Max durability by tier id. */
+export const ARMOR_DURABILITY: Record<Tier, number> = { green: 10, blue: 15, purple: 20, legendary: 30, mythic: 40 }
+/** Wear when the wearer is hit (the higher applies). */
+export const WEAR = { hit: 1, weakType: 2, crit: 3, weakCrit: 3 }
+/** Damaged at or below this fraction of max → −1 AC. Broken at 0. */
+export const DAMAGED_AT = 0.5
+export const DAMAGED_AC_PENALTY = 1
+/** Blacksmith repair cost (gold per point) by tier id; Broken armor costs × BROKEN_REPAIR_MULT. */
+export const REPAIR_COST_PER_POINT: Record<Tier, number> = { green: 1, blue: 1, purple: 3, legendary: 10, mythic: 25 }
+export const BROKEN_REPAIR_MULT = 2
+/** Field Repair Kit restores this much (use during a short rest). */
+export const FIELD_REPAIR_DICE = '1d6+2'
+
 // ---------- B) Blacksmith fusing ----------
 /** Fee (gold) to fuse two armors of the same type + tier into one of the next tier. Key = the tier you start from. */
 export const FUSE_FEES: Partial<Record<Tier, number>> = { green: 15, blue: 20, purple: 120, legendary: 400 }
@@ -39,6 +53,7 @@ export type EffectSpec =
   | { kind: 'whetstone' }                                 // next hit that day is a crit
   | { kind: 'badge'; duration: string; until?: 'combat' | 'long' }          // reminder badge
   | { kind: 'reminder' }                                  // one-shot effect, just logged
+  | { kind: 'repairKit'; dice: string }                   // restore armor durability (short rest)
 
 export interface CatalogItem {
   key: string; name: string; tier: Tier; type: 'potion' | 'scroll'; price: number; desc: string; effect: EffectSpec
@@ -54,6 +69,7 @@ export const CONSUMABLES: CatalogItem[] = [
   { key: 'ember-flask', name: 'Ember Flask', tier: 'green', type: 'potion', price: 10, desc: 'Throw for a 10 ft fire area, or pour on a weapon for +1d4 fire (until the next long rest).', effect: { kind: 'weaponBonus', dice: '1d4', type: 'fire' } },
   { key: 'beastblood', name: 'Beastblood Brew', tier: 'green', type: 'potion', price: 12, desc: 'Speak with one kind of animal. 1 hour.', effect: { kind: 'badge', duration: '1 hour' } },
   { key: 'clear-eyes', name: 'Potion of Clear Eyes', tier: 'green', type: 'potion', price: 12, desc: 'Darkvision and see invisible outlines. 10 minutes.', effect: { kind: 'badge', duration: '10 minutes' } },
+  { key: 'field-repair', name: 'Field Repair Kit', tier: 'green', type: 'potion', price: 15, desc: 'One use, during a short rest: restore 1d6+2 durability to one armor (not Broken armor).', effect: { kind: 'repairKit', dice: FIELD_REPAIR_DICE } },
   { key: 'borrowed-skill', name: 'Scroll of Borrowed Skill', tier: 'green', type: 'scroll', price: 15, desc: 'Proficiency in one skill or tool. 1 hour.', effect: { kind: 'badge', duration: '1 hour' } },
   // Blue
   { key: 'heal-blue', name: 'Healing Potion', tier: 'blue', type: 'potion', price: 35, desc: 'Regain 4d8+4 HP.', effect: { kind: 'heal', dice: '4d8+4' } },

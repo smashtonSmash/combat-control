@@ -187,7 +187,7 @@ export default function App() {
       ...e,
       combatants: e.combatants.map((x) => x.characterId === c.id
         ? { ...x, name: c.name, ac: c.ac, armor: c.armor, maxHp: c.maxHp, hp: Math.min(typeof c.currentHp === 'number' ? c.currentHp : x.hp, c.maxHp), initMod: c.initMod, traits: c.traits, attacks: c.attacks,
-            armorId: c.armorId, armorTier: c.armorTier, underId: c.underId, underTier: c.underTier, prof: charProf(c), tierV: c.tierV }
+            armorId: c.armorId, armorTier: c.armorTier, armorDamaged: c.armorDamaged, underId: c.underId, underTier: c.underTier, prof: charProf(c), tierV: c.tierV }
         : x),
     }))
   }

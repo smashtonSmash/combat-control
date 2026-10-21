@@ -65,6 +65,8 @@ export interface Item {
   catalogKey?: string
   /** gold value (shop) */
   price?: number
+  /** armor durability (current). Missing = full (max comes from the tier, see catalog.ts) */
+  dur?: number
   /** blacksmith: fused armor waiting at the forge until the DM taps Ready */
   atForge?: boolean
   /** weapon coatings until the next long rest (oils / Ember Flask) */

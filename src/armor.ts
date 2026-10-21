@@ -147,6 +147,8 @@ export interface ArmorFields {
   prof?: number
   /** tier data version (see TIER_VERSION) */
   tierV?: number
+  /** equipped armor is Damaged (durability ≤ half): −1 AC */
+  armorDamaged?: boolean
 }
 
 /** Combined effects of main armor + optional under-layer. */
@@ -172,6 +174,7 @@ export function armorAc(f: ArmorFields, dexMod: number): number | null {
   if (!def) return null
   const dex = def.dexCap === null ? dexMod : Math.min(dexMod, def.dexCap)
   let ac = def.baseAc + dex
+  if (f.armorDamaged) ac -= 1
   if (def.category !== 'light' && canBeUnderLayer(f.underId, f.underTier)) ac += resolveArmor(armorById(f.underId), f.underTier, 2).underLayerAc
   return ac
 }

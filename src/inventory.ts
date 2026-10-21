@@ -1,3 +1,4 @@
+import { armorDamagedFlag, isBroken } from './durability'
 import { catalogItem, catalogToItem } from './catalog'
 import { useCatalogItem } from './effects'
 import type { Character, DamageType, Item } from './types'
@@ -50,7 +51,8 @@ export const COMMON_WEAPONS: { name: string; damage: string; damageType: DamageT
 export const weaponItem = (w: (typeof COMMON_WEAPONS)[number]): Item => ({ id: uid(), name: w.name, kind: 'weapon', qty: 1, damage: w.damage, damageType: w.damageType, description: `${w.damage} ${w.damageType}` })
 
 /** Re-derive armor label + AC (unless AC is manual). */
-export function recalcArmor(c: Character): Character {
+export function recalcArmor(c0: Character): Character {
+  const c = { ...c0, armorDamaged: armorDamagedFlag(c0) || undefined }
   const ac = armorAc(c, abilityMod(c.abilities.dex))
   return { ...c, tierV: 2, ...(ac !== null && !c.acManual ? { ac } : {}), ...(c.armorId ? { armor: armorLabel(c) } : {}) }
 }
@@ -62,7 +64,7 @@ export function equip(c: Character, itemId: string): Character {
   const it = inv.find((x) => x.id === itemId)
   if (!it) return c
   if (it.kind === 'armor') {
-    if (it.atForge) return c // still at the blacksmith
+    if (it.atForge || isBroken(it)) return c // at the blacksmith / Broken until repaired
     // one armor at a time
     const next = { ...c, armorId: it.armorId, armorTier: it.tier, inventory: inv.map((x) => (x.kind === 'armor' ? { ...x, equipped: x.id === itemId } : x)) }
     return recalcArmor(next)
@@ -81,7 +83,7 @@ export function unequip(c: Character, itemId: string): Character {
   const it = inv.find((x) => x.id === itemId)
   if (!it) return c
   const base = { ...c, inventory: inv.map((x) => (x.id === itemId ? { ...x, equipped: false } : x)) }
-  if (it.kind === 'armor') return { ...base, armorId: undefined, armorTier: undefined, armor: 'No armor', ...(c.acManual ? {} : { ac: 10 + abilityMod(c.abilities.dex) }) }
+  if (it.kind === 'armor') return { ...base, armorId: undefined, armorTier: undefined, armorDamaged: undefined, armor: 'No armor', ...(c.acManual ? {} : { ac: 10 + abilityMod(c.abilities.dex) }) }
   if (it.kind === 'weapon') return { ...base, attacks: c.attacks.filter((a) => a.id !== weaponAttackId(it)) }
   return base
 }
@@ -102,11 +104,11 @@ export function addItem(c: Character, item: Item): Character {
   return { ...c, inventory: [...inv, { ...item, equipped: false }] }
 }
 
-export function useItem(c: Character, itemId: string): { char: Character; message: string } {
+export function useItem(c: Character, itemId: string, opts: { targetId?: string } = {}): { char: Character; message: string } {
   const it = (c.inventory ?? []).find((x) => x.id === itemId)
   if (!it) return { char: c, message: '' }
   const cat = catalogItem(it.catalogKey)
-  if (cat) { const r = useCatalogItem(c, it, cat); return { char: r.char, message: r.message } }
+  if (cat) { const r = useCatalogItem(c, it, cat, opts); return { char: r.char, message: r.message } }
   let char = removeItem(c, itemId, 1)
   if (it.kind === 'scroll' && it.scroll?.kind === 'spell') return { char, message: scrollCastText(c.name, it.scroll.spell) }
   if (it.heal) {
