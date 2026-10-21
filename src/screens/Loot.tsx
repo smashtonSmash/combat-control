@@ -4,8 +4,9 @@ import { uid } from '../types'
 import { ItemCard, ItemPicker } from '../components/Items'
 import { Sheet, Stepper } from '../components/Sheet'
 import { fmtCoins, purseTotal } from '../casino/money'
+import { coinsToSilver, splitEvenly, takeFrom } from '../loot'
 
-type Payload = { kind: 'item'; id: string } | { kind: 'coins' }
+type Payload = { kind: 'item'; id: string } | { kind: 'pouch'; id: string }
 
 export default function Loot({ chests, saveChest, deleteChest, characters, onGiveItem, onGiveCoins, readOnly }: {
   chests: Chest[]; saveChest: (k: Chest) => void; deleteChest: (id: string) => void
@@ -19,7 +20,8 @@ export default function Loot({ chests, saveChest, deleteChest, characters, onGiv
   const chest = chests.find((k) => k.id === openId) ?? chests[0]
   const [armed, setArmed] = useState<Payload | null>(null)
   const [adding, setAdding] = useState(false)
-  const [coinFor, setCoinFor] = useState<string | null>(null)
+  const [pouchOpen, setPouchOpen] = useState(false)
+  const [splitOpen, setSplitOpen] = useState(false)
   const [msg, setMsg] = useState('')
 
   // ---- drag (same pointer-event style as Battle) ----
@@ -30,7 +32,11 @@ export default function Loot({ chests, saveChest, deleteChest, characters, onGiv
     document.addEventListener('touchmove', block, { passive: false })
     return () => document.removeEventListener('touchmove', block)
   }, [])
-  const labelOf = (p: Payload) => (p.kind === 'coins' ? `💰 ${chest?.gold ?? 0}g ${chest?.silver ?? 0}s` : chest?.items.find((i) => i.id === p.id)?.name ?? '')
+  const pouchLabel = (g: number, s: number) => `💰 ${g ? g + 'g' : ''}${g && s ? ' ' : ''}${s || !g ? s + 's' : ''}`
+  const labelOf = (p: Payload) => {
+    if (p.kind === 'pouch') { const q = chest?.pouches?.find((x) => x.id === p.id); return q ? pouchLabel(q.gold, q.silver) + ' pouch' : '' }
+    return chest?.items.find((i) => i.id === p.id)?.name ?? ''
+  }
   const targetAt = (x: number, y: number) => (document.elementFromPoint(x, y)?.closest('[data-charid]') as HTMLElement | null)?.dataset.charid ?? null
   const startDrag = (e: React.PointerEvent, p: Payload) => {
     if (readOnly || (e.pointerType === 'mouse' && e.button !== 0)) return
@@ -50,14 +56,21 @@ export default function Loot({ chests, saveChest, deleteChest, characters, onGiv
   const tapPayload = (p: Payload) => {
     if (readOnly) return
     if (drag.current?.active) return
-    setArmed((a) => (a && a.kind === p.kind && (a.kind === 'coins' || (p.kind === 'item' && a.id === p.id)) ? null : p))
+    setArmed((a) => (a && a.kind === p.kind && a.id === p.id ? null : p))
   }
 
   const drop = (p: Payload, charId: string) => {
     if (!chest) return
     setArmed(null)
     const who = characters.find((c) => c.id === charId)?.name ?? 'them'
-    if (p.kind === 'coins') { setCoinFor(charId); return }
+    if (p.kind === 'pouch') {
+      const q = chest.pouches?.find((x) => x.id === p.id)
+      if (!q) return
+      onGiveCoins(charId, q.gold, q.silver)
+      saveChest({ ...chest, pouches: (chest.pouches ?? []).filter((x) => x.id !== q.id), updated: Date.now() })
+      setMsg(`${pouchLabel(q.gold, q.silver)} → ${who}`)
+      return
+    }
     const it = chest.items.find((i) => i.id === p.id)
     if (!it) return
     onGiveItem(charId, it)
@@ -66,7 +79,7 @@ export default function Loot({ chests, saveChest, deleteChest, characters, onGiv
   }
 
   const newChest = () => {
-    const k: Chest = { id: uid(), name: `Chest ${chests.length + 1}`, items: [], gold: 0, silver: 0, updated: Date.now() }
+    const k: Chest = { id: uid(), name: `Chest ${chests.length + 1}`, items: [], gold: 0, silver: 0, pouches: [], updated: Date.now() }
     saveChest(k); setOpenId(k.id); setAdding(true)
   }
 
@@ -85,21 +98,37 @@ export default function Loot({ chests, saveChest, deleteChest, characters, onGiv
             {readOnly ? <b>{chest.name}</b> : <input className="grow" value={chest.name} onChange={(e) => saveChest({ ...chest, name: e.target.value })} />}
             {!readOnly && <button className="icon-btn danger" aria-label="Delete chest" onClick={() => { if (confirm(`Delete ${chest.name}?`)) deleteChest(chest.id) }}>🗑</button>}
           </div>
-          {chest.items.length === 0 && <div className="small muted">Empty chest.</div>}
+          {chest.items.length === 0 && !(chest.pouches ?? []).length && <div className="small muted">Empty chest.</div>}
           <div className="item-grid">
             {chest.items.map((it) => (
               <ItemCard key={it.id} it={it} selected={armed?.kind === 'item' && armed.id === it.id} dragging={ghost !== null && drag.current?.p.kind === 'item' && (drag.current.p as { id: string }).id === it.id}
                 onPointerDown={(e) => startDrag(e, { kind: 'item', id: it.id })} onClick={() => tapPayload({ kind: 'item', id: it.id })} />
             ))}
+            {(chest.pouches ?? []).map((q) => (
+              <button key={q.id} type="button" className={'item-card pouch ' + (armed?.kind === 'pouch' && armed.id === q.id ? 'selected' : '')}
+                onPointerDown={(e) => startDrag(e, { kind: 'pouch', id: q.id })} onClick={() => tapPayload({ kind: 'pouch', id: q.id })} onContextMenu={(e) => e.preventDefault()}>
+                {!readOnly && <span className="pouch-x" role="button" aria-label="Delete pouch (coins go back)" onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); saveChest({ ...chest, gold: chest.gold + q.gold, silver: chest.silver + q.silver, pouches: (chest.pouches ?? []).filter((x) => x.id !== q.id), updated: Date.now() }); setArmed(null) }}>✕</span>}
+                <span className="item-icon">👝</span>
+                <span className="item-name">Coin pouch</span>
+                <small className="item-sub pouch-amt">{q.gold ? <b className="g">{q.gold}g</b> : null} {q.silver ? <b className="s">{q.silver}s</b> : null}</small>
+              </button>
+            ))}
           </div>
-          <div className={'coin-pile ' + (armed?.kind === 'coins' ? 'selected' : '')} onPointerDown={(e) => (chest.gold || chest.silver) && startDrag(e, { kind: 'coins' })} onClick={() => (chest.gold || chest.silver) && tapPayload({ kind: 'coins' })}>
+          <div className="coin-pile">
             <span style={{ fontSize: 26 }}>💰</span>
-            <span className="coin-pill gold">{chest.gold} g</span><span className="coin-pill silver">{chest.silver} s</span>
-            {!readOnly && <span className="small muted" style={{ marginLeft: 'auto' }}>drag to a hero</span>}
+            <div><div className="mini-label" style={{ margin: 0 }}>Left in chest</div>
+              <span className="coin-pill gold">{chest.gold} g</span> <span className="coin-pill silver">{chest.silver} s</span></div>
           </div>
           {!readOnly && (
             <div className="row" style={{ marginTop: 8 }}>
-              <Stepper label="Gold" value={chest.gold} onChange={(v) => saveChest({ ...chest, gold: Math.max(0, v) })} min={0} max={99999} />
+              <button className="btn grow" disabled={!chest.gold && !chest.silver} onClick={() => setPouchOpen(true)}>👝 New pouch</button>
+              <button className="btn grow" disabled={!chest.gold && !chest.silver} onClick={() => setSplitOpen(true)}>⚖ Split evenly</button>
+            </div>
+          )}
+          {!readOnly && (
+            <div className="row" style={{ marginTop: 8 }}>
+              <Stepper label="Chest gold" value={chest.gold} onChange={(v) => saveChest({ ...chest, gold: Math.max(0, v) })} min={0} max={99999} />
               <Stepper label="Silver" value={chest.silver} onChange={(v) => saveChest({ ...chest, silver: Math.max(0, v) })} min={0} max={99999} />
             </div>
           )}
@@ -125,26 +154,78 @@ export default function Loot({ chests, saveChest, deleteChest, characters, onGiv
         </>
       )}
       {ghost && <div className="drag-ghost" style={{ left: ghost.x, top: ghost.y }}>{ghost.label}{ghost.over ? <> → <b>{characters.find((c) => c.id === ghost.over)?.name}</b></> : ''}</div>}
-      {coinFor && chest && (
-        <CoinSheet chest={chest} name={characters.find((c) => c.id === coinFor)?.name ?? ''} onClose={() => setCoinFor(null)} onGive={(g, s) => {
-          onGiveCoins(coinFor, g, s)
-          saveChest({ ...chest, gold: chest.gold - g, silver: chest.silver - s, updated: Date.now() })
-          setMsg(`💰 ${g}g ${s}s → ${characters.find((c) => c.id === coinFor)?.name}`); setCoinFor(null)
+      {pouchOpen && chest && (
+        <PouchSheet chest={chest} onClose={() => setPouchOpen(false)} onCreate={(g, sv) => {
+          const left = takeFrom(chest, g, sv)
+          if (!left) return
+          saveChest({ ...chest, ...left, pouches: [...(chest.pouches ?? []), { id: uid(), gold: g, silver: sv }], updated: Date.now() })
+          setPouchOpen(false)
+        }} />
+      )}
+      {splitOpen && chest && (
+        <SplitSheet chest={chest} characters={characters} onClose={() => setSplitOpen(false)} onConfirm={(ids, leftoverTo) => {
+          const r = splitEvenly(chest.gold, chest.silver, ids.length, leftoverTo)
+          ids.forEach((id, i) => onGiveCoins(id, r.shares[i].gold, r.shares[i].silver))
+          saveChest({ ...chest, ...r.chest, updated: Date.now() })
+          setMsg(`⚖ Split ${chest.gold}g ${chest.silver}s among ${ids.length}${r.leftover ? ` (${r.leftover}s leftover → ${leftoverTo === 'chest' ? 'chest' : characters.find((c) => c.id === ids[0])?.name})` : ''}`)
+          setSplitOpen(false)
         }} />
       )}
     </div>
   )
 }
 
-function CoinSheet({ chest, name, onClose, onGive }: { chest: Chest; name: string; onClose: () => void; onGive: (g: number, s: number) => void }) {
-  const [g, setG] = useState(chest.gold)
-  const [s, setS] = useState(chest.silver)
+function PouchSheet({ chest, onClose, onCreate }: { chest: Chest; onClose: () => void; onCreate: (g: number, s: number) => void }) {
+  const [g, setG] = useState(0)
+  const [s, setS] = useState(0)
+  const ok = (g || s) && takeFrom(chest, g, s)
+  const total = coinsToSilver(chest.gold, chest.silver)
+  const set = (t: number) => { setG(Math.min(chest.gold, Math.floor(t / 10))); setS(t - Math.min(chest.gold, Math.floor(t / 10)) * 10) }
   return (
-    <Sheet open onClose={onClose} title={`💰 Coins → ${name}`}
-      footer={<button className="btn big primary" disabled={!g && !s} onClick={() => onGive(g, s)}>Give {g}g {s}s</button>}>
-      <div className="small muted">Chest has {chest.gold}g {chest.silver}s.</div>
-      <div className="row"><Stepper label="Gold" value={g} onChange={setG} min={0} max={chest.gold} /><button className="chip" onClick={() => setG(chest.gold)}>all</button></div>
-      <div className="row"><Stepper label="Silver" value={s} onChange={setS} min={0} max={chest.silver} /><button className="chip" onClick={() => setS(chest.silver)}>all</button></div>
+    <Sheet open onClose={onClose} title="👝 New coin pouch"
+      footer={<button className="btn big primary" disabled={!ok} onClick={() => onCreate(g, s)}>Make pouch: {g}g {s}s</button>}>
+      <div className="small muted">Chest has <b>{chest.gold}g {chest.silver}s</b> left.</div>
+      <div className="row"><Stepper label="Gold" value={g} onChange={(v) => setG(Math.max(0, Math.min(chest.gold, v)))} min={0} max={chest.gold} /></div>
+      <div className="row"><Stepper label="Silver" value={s} onChange={(v) => setS(Math.max(0, v))} min={0} max={total} /></div>
+      <div className="chips-row wrap">
+        <button className="chip" onClick={() => { setG(chest.gold); setS(chest.silver) }}>Rest of it</button>
+        <button className="chip" onClick={() => set(Math.floor(total / 2))}>Half</button>
+        {[1, 5, 10, 25].filter((n) => n <= chest.gold).map((n) => <button key={n} className="chip" onClick={() => { setG(n); setS(0) }}>{n}g</button>)}
+      </div>
+      {!ok && (g > 0 || s > 0) && <div className="small" style={{ color: '#f08a78' }}>That’s more than the chest has left.</div>}
+      {s > chest.silver && ok && <div className="small muted">Will break {Math.ceil((s - chest.silver) / 10)} gold into silver.</div>}
+    </Sheet>
+  )
+}
+
+function SplitSheet({ chest, characters, onClose, onConfirm }: {
+  chest: Chest; characters: Character[]; onClose: () => void; onConfirm: (ids: string[], leftoverTo: 'chest' | 'first') => void
+}) {
+  const [ids, setIds] = useState(characters.map((c) => c.id))
+  const [to, setTo] = useState<'chest' | 'first'>('chest')
+  const chosen = characters.filter((c) => ids.includes(c.id))
+  const r = splitEvenly(chest.gold, chest.silver, chosen.length, to)
+  return (
+    <Sheet open onClose={onClose} title="⚖ Split coins evenly"
+      footer={<button className="btn big primary" disabled={!chosen.length} onClick={() => onConfirm(chosen.map((c) => c.id), to)}>Give {chosen.length} share{chosen.length === 1 ? '' : 's'}</button>}>
+      <div className="small muted">Splitting <b>{chest.gold}g {chest.silver}s</b> ({coinsToSilver(chest.gold, chest.silver)}s). Shares are paid in gold + silver.</div>
+      <div className="mini-label">Who gets a share?</div>
+      <div className="chips-row wrap">
+        {characters.map((c) => <button key={c.id} className={'chip ' + (ids.includes(c.id) ? 'on' : '')} onClick={() => setIds(ids.includes(c.id) ? ids.filter((x) => x !== c.id) : [...ids, c.id])}>{ids.includes(c.id) ? '✓ ' : ''}{c.name}</button>)}
+      </div>
+      {r.leftover > 0 && (
+        <>
+          <div className="mini-label">{r.leftover}s doesn’t split evenly — give it to…</div>
+          <div className="segmented">
+            <button type="button" className={to === 'chest' ? 'on' : ''} onClick={() => setTo('chest')}>Keep in chest</button>
+            <button type="button" className={to === 'first' ? 'on' : ''} onClick={() => setTo('first')}>{chosen[0]?.name ?? 'First'}</button>
+          </div>
+        </>
+      )}
+      <div className="panel">
+        {chosen.map((c, i) => <div key={c.id} className="row between"><span>{c.name}</span><b>{fmtCoins(r.shares[i].gold * 10 + r.shares[i].silver)}</b></div>)}
+        {to === 'chest' && r.leftover > 0 && <div className="row between muted"><span>Back to chest</span><span>{r.leftover}s</span></div>}
+      </div>
     </Sheet>
   )
 }

@@ -53,7 +53,7 @@ export interface Item {
   heal?: string
 }
 
-export interface Chest { id: string; name: string; items: Item[]; gold: number; silver: number; updated?: number }
+export interface Chest { id: string; name: string; items: Item[]; gold: number; silver: number; pouches?: { id: string; gold: number; silver: number }[]; updated?: number }
 
 export interface Character extends ArmorFields {
   id: string
