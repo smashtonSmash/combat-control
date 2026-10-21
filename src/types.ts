@@ -35,7 +35,13 @@ export interface Abilities { str: number; dex: number; con: number; int: number;
 
 export interface Purse { gold: number; silver: number }
 
-export type ItemKind = 'armor' | 'weapon' | 'consumable' | 'misc'
+export type ItemKind = 'armor' | 'weapon' | 'consumable' | 'scroll' | 'misc'
+
+/**
+ * What a scroll does. Extend this union for new scroll kinds, e.g.
+ * { kind: 'enhance'; target: 'weapon' | 'armor'; ... } — enhances gear until the next long rest (planned).
+ */
+export type ScrollData = { kind: 'spell'; spell: import('./spells').CharSpell }
 export interface Item {
   id: string
   name: string
@@ -51,6 +57,8 @@ export interface Item {
   damageType?: DamageType
   // consumable: dice healed on use, e.g. 2d4+2
   heal?: string
+  // scroll
+  scroll?: ScrollData
 }
 
 export interface Chest { id: string; name: string; items: Item[]; gold: number; silver: number; pouches?: { id: string; gold: number; silver: number }[]; updated?: number }

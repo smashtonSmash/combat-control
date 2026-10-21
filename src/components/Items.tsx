@@ -1,8 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { DamageType, Item, ItemKind } from '../types'
 import { DAMAGE_TYPES, uid } from '../types'
 import { ARMOR_CATALOG, TIERS, TIER_COLORS, TIER_SHORT, type Tier } from '../armor'
-import { COMMON_WEAPONS, KIND_ICON, armorItem, potionOfHealing, weaponItem } from '../inventory'
+import { COMMON_WEAPONS, KIND_ICON, armorItem, potionOfHealing, scrollItem, weaponItem } from '../inventory'
+import { fromSrd, loadSpells, type CharSpell, type SrdSpell } from '../spells'
+import { CustomSpell } from './Spells'
+import { DAMAGE_ICONS } from '../types'
 
 export function ItemCard({ it, selected, onClick, onPointerDown, dragging }: {
   it: Item; selected?: boolean; onClick?: () => void; onPointerDown?: (e: React.PointerEvent) => void; dragging?: boolean
@@ -15,26 +18,27 @@ export function ItemCard({ it, selected, onClick, onPointerDown, dragging }: {
       {it.equipped && <span className="eq-ribbon">EQUIPPED</span>}
       <span className="item-icon">{KIND_ICON[it.kind]}</span>
       <span className="item-name">{it.name}</span>
-      <small className="item-sub">{it.kind === 'weapon' ? `${it.damage} ${it.damageType}` : it.heal ? `heals ${it.heal}` : it.tier ? <span style={{ color }}>◆ {TIER_SHORT[it.tier]}</span> : it.kind}</small>
+      <small className="item-sub">{it.scroll?.kind === 'spell' ? `${it.scroll.spell.level ? 'lv ' + it.scroll.spell.level : 'cantrip'} scroll` : it.kind === 'weapon' ? `${it.damage} ${it.damageType}` : it.heal ? `heals ${it.heal}` : it.tier ? <span style={{ color }}>◆ {TIER_SHORT[it.tier]}</span> : it.kind}</small>
       {it.qty > 1 && <span className="qty">×{it.qty}</span>}
     </button>
   )
 }
 
 /** Quick picks + custom item form. */
-export function ItemPicker({ onAdd }: { onAdd: (it: Item) => void }) {
+export function ItemPicker({ onAdd, customSpells = [] }: { onAdd: (it: Item) => void; customSpells?: CharSpell[] }) {
   const [armorId, setArmorId] = useState(ARMOR_CATALOG[0].id)
   const [tier, setTier] = useState<Tier>('green')
   const [custom, setCustom] = useState<{ name: string; kind: ItemKind; qty: number; description: string; damage: string; damageType: DamageType; heal: string }>(
     { name: '', kind: 'misc', qty: 1, description: '', damage: '1d6', damageType: 'slashing', heal: '' })
-  const [open, setOpen] = useState<'quick' | 'custom'>('quick')
+  const [open, setOpen] = useState<'quick' | 'scroll' | 'custom'>('quick')
   return (
     <div className="item-picker">
       <div className="segmented">
         <button type="button" className={open === 'quick' ? 'on' : ''} onClick={() => setOpen('quick')}>Quick picks</button>
+        <button type="button" className={open === 'scroll' ? 'on' : ''} onClick={() => setOpen('scroll')}>📜 Spell scroll</button>
         <button type="button" className={open === 'custom' ? 'on' : ''} onClick={() => setOpen('custom')}>Custom item</button>
       </div>
-      {open === 'quick' ? (
+      {open === 'scroll' ? <ScrollPicker onAdd={onAdd} customSpells={customSpells} /> : open === 'quick' ? (
         <>
           <button className="btn sm" onClick={() => onAdd(potionOfHealing())}>🧪 + Potion of Healing (2d4+2)</button>
           <div className="mini-label">Armor</div>
@@ -67,6 +71,46 @@ export function ItemPicker({ onAdd }: { onAdd: (it: Item) => void }) {
           }}>+ Add {custom.name || 'item'}</button>
         </>
       )}
+    </div>
+  )
+}
+
+const LV = ['Cantrip', '1', '2', '3', '4', '5', '6', '7', '8', '9']
+function ScrollPicker({ onAdd, customSpells }: { onAdd: (it: Item) => void; customSpells: CharSpell[] }) {
+  const [all, setAll] = useState<SrdSpell[] | null>(null)
+  const [lvl, setLvl] = useState<number | null>(null)
+  const [q, setQ] = useState('')
+  const [made, setMade] = useState('')
+  useEffect(() => { loadSpells().then(setAll) }, [])
+  const ql = q.toLowerCase()
+  const custom = useMemo(() => {
+    const seen = new Set<string>()
+    return customSpells.filter((s) => !seen.has(s.name) && seen.add(s.name) && (lvl === null || s.level === lvl) && s.name.toLowerCase().includes(ql))
+  }, [customSpells, lvl, ql])
+  const list = useMemo(() => (all ?? []).filter((s) => (lvl === null || s.l === lvl) && s.n.toLowerCase().includes(ql)), [all, lvl, ql])
+  const add = (sp: CharSpell) => { const it = scrollItem(sp); onAdd(it); setMade(`Added ${it.name}`) }
+  return (
+    <div className="spell-picker">
+      <div className="chips-row lv-tabs">
+        <button className={'chip ' + (lvl === null ? 'on' : '')} onClick={() => setLvl(null)}>All</button>
+        {LV.map((o, i) => <button key={o} className={'chip ' + (lvl === i ? 'on' : '')} onClick={() => setLvl(i)}>{o}</button>)}
+      </div>
+      <input placeholder="Search all spells for a scroll…" value={q} onChange={(e) => setQ(e.target.value)} />
+      {made && <div className="small">✓ {made}</div>}
+      <div className="picker-list">
+        {!all && <div className="small muted">Loading spells…</div>}
+        {custom.map((s) => (
+          <button key={'c' + s.id} className="picker-row" onClick={() => add(s)}>
+            <b>📜 {s.name}</b> <small className="muted">custom · {s.level ? 'lv ' + s.level : 'cantrip'}</small><span className="add">+</span>
+          </button>
+        ))}
+        {list.map((s) => (
+          <button key={s.i} className="picker-row" onClick={() => add(fromSrd(s, s.i))}>
+            <b>📜 {s.n}</b> <small className="muted">{s.l ? 'lv ' + s.l : 'cantrip'}{s.dt ? ` · ${DAMAGE_ICONS[s.dt]} ${s.dt}` : ''}</small><span className="add">+</span>
+          </button>
+        ))}
+        <CustomSpell level={lvl ?? 1} onAdd={add} label="✎ Custom scroll" />
+      </div>
     </div>
   )
 }

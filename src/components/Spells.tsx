@@ -157,16 +157,16 @@ function SpellPicker({ cls, have, onAdd }: { cls?: string; have: Set<string>; on
   )
 }
 
-function CustomSpell({ level, onAdd }: { level: number; onAdd: (s: CharSpell) => void }) {
+export function CustomSpell({ level, onAdd, label = '✎ Custom spell' }: { level: number; onAdd: (s: CharSpell) => void; label?: string }) {
   const [open, setOpen] = useState(false)
   const blank = () => ({ name: '', description: '', damage: '', damageType: '' as DamageType | '', save: '', effect: 'none' as CharSpell['effect'], effectType: 'fire' as DamageType, effectRounds: 10, effectNote: '', concentration: false })
   const [f, setF] = useState(blank)
   const [lv, setLv] = useState(level)
   useEffect(() => setLv(level), [level])
-  if (!open) return <button className="picker-row custom" onClick={() => setOpen(true)}><b>✎ Custom spell</b><span className="add">+</span></button>
+  if (!open) return <button className="picker-row custom" onClick={() => setOpen(true)}><b>{label}</b><span className="add">+</span></button>
   return (
     <div className="panel custom-spell">
-      <b>✎ Custom spell</b>
+      <b>{label}</b>
       <div className="row"><input className="grow" placeholder="Spell name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
         <select value={lv} onChange={(e) => setLv(Number(e.target.value))}>{ORD.map((o, i) => <option key={o} value={i}>{o}</option>)}</select></div>
       <textarea rows={3} placeholder="Description" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} />

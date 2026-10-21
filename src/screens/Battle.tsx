@@ -7,18 +7,18 @@ import { characterToCombatant } from '../seed'
 import { NumField, Segmented, Sheet, Stepper, TextField } from '../components/Sheet'
 import { DamageTypePicker, TraitEditor } from '../components/Editors'
 import { TIER_COLORS, TIER_SHORT, combinedArmor } from '../armor'
-import { availableSlots, damageFor, spellMod } from '../spells'
+import { availableSlots, damageFor, scrollStats, spellMod } from '../spells'
 import { effectiveSlots } from '../components/Spells'
 import { charProf } from '../seed'
 
 type SetEnc = (f: (e: Encounter) => Encounter) => void
 
-interface Props { encounter: Encounter; setEncounter: SetEnc; characters: Character[]; onSpendSlot?: (charId: string, level: number) => void; onRest?: (kind: 'long' | 'short') => void }
+interface Props { encounter: Encounter; setEncounter: SetEnc; characters: Character[]; onSpendSlot?: (charId: string, level: number) => void; onUseScroll?: (charId: string, itemId: string) => void; onRest?: (kind: 'long' | 'short') => void }
 
 const log = (e: Encounter, text: string, kind: LogEntry['kind']): LogEntry[] =>
   [{ id: uid(), round: e.round, text, kind, time: Date.now() }, ...e.log].slice(0, 200)
 
-export default function Battle({ encounter, setEncounter, characters, onSpendSlot, onRest }: Props) {
+export default function Battle({ encounter, setEncounter, characters, onSpendSlot, onUseScroll, onRest }: Props) {
   const { combatants, round, turnId } = encounter
   const party = combatants.filter((c) => c.side === 'party')
   const monsters = combatants.filter((c) => c.side === 'monster')
@@ -172,6 +172,7 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
       return { ...e, combatants: cs, log: entries }
     })
     if (res.spell && res.spell.slotLevel > 0) onSpendSlot?.(res.spell.charId, res.spell.slotLevel)
+    if (res.scroll) onUseScroll?.(res.scroll.charId, res.scroll.itemId)
     if (res.grant) { setAttack(null); setFlash({ id: t.id, text: '🛡', kind: 'heal', key: Date.now() }); return }
     setFlash(res.heal ? { id: t.id, text: `+${res.final}`, kind: 'heal', key: Date.now() }
       : { id: t.id, text: res.hit ? `−${res.final}` : 'MISS', kind: res.hit ? 'hit' : 'miss', key: Date.now() })
@@ -378,7 +379,7 @@ function CombatantCard({ c, isTurn, isSelected, isOver, isDragging, flash, onPoi
 interface AttackResult {
   attackerId: string; targetId: string; weapon: string; hit: boolean; crit: boolean
   type: DamageType; final: number; steps: string[]; rollText: string; heal?: boolean; shrug?: boolean
-  spell?: { charId: string; slotLevel: number }; grant?: Trait
+  spell?: { charId: string; slotLevel: number }; scroll?: { charId: string; itemId: string }; grant?: Trait
 }
 
 const MODE_KEY = 'cc.attackEntryMode'
@@ -428,13 +429,25 @@ function AttackSheet({ attacker, target, onClose, onApply, caster }: {
   const press = (k: string) => setQText((t) => k === '⌫' ? t.slice(0, -1) : k === 'C' ? '' : (t + k).replace(/^0+(?=\d)/, '').slice(0, 3))
 
   // ---- spells ----
-  const castable = (caster?.spells ?? []).filter((sp) => sp.effect === 'resistance' || damageFor(sp, Math.max(1, sp.level), caster!.level))
+  // scrolls in the caster's pack are castable by anyone (house rule), no slot
+  const scrollSpells = (caster?.inventory ?? []).flatMap((it) => (it.scroll?.kind === 'spell' ? [{ ...it.scroll.spell, id: 'scroll:' + it.id, name: it.name }] : []))
+  const castable = [...(caster?.spells ?? []), ...scrollSpells].filter((sp) => sp.effect === 'resistance' || damageFor(sp, Math.max(1, sp.level), caster!.level))
   const cSlots = caster ? effectiveSlots(caster) : undefined
   const [spellId, setSpellId] = useState<string | null>(null)
   const [slotLv, setSlotLv] = useState(1)
   const spell = castable.find((x) => x.id === spellId)
   const [resType, setResType] = useState<DamageType>('fire')
+  const isScroll = (id?: string | null) => !!id && id.startsWith('scroll:')
   const pickSpell = (sp: typeof castable[number], lv = Math.max(1, sp.level)) => {
+    if (isScroll(sp.id)) {
+      const st = scrollStats(sp.level)
+      setSpellId(sp.id); setSlotLv(sp.level); setWeapon(sp.name); setDmgText('')
+      if (sp.damageType) setType(sp.damageType)
+      if (sp.effectType) setResType(sp.effectType)
+      const dice = damageFor(sp, Math.max(1, sp.level), 1); if (dice) setExpr(dice)
+      setToHit(st.attack)
+      return
+    }
     const ok = availableSlots(cSlots, sp.level)
     const L = sp.level === 0 ? 0 : (ok.some((o) => o.level === lv) ? lv : ok[0]?.level ?? lv)
     setSpellId(sp.id); setSlotLv(L); setWeapon(sp.name); setDmgText('')
@@ -443,8 +456,9 @@ function AttackSheet({ attacker, target, onClose, onApply, caster }: {
     const dice = damageFor(sp, L, caster!.level); if (dice) setExpr(dice)
     if (sp.attack) setToHit(charProf(caster!) + spellMod(caster!))
   }
-  const spellExtra = spell && caster ? { spell: { charId: caster.id, slotLevel: spell.level === 0 ? 0 : slotLv } } : {}
-  const noSlot = !!spell && spell.level > 0 && !availableSlots(cSlots, spell.level).some((o) => o.level === slotLv)
+  const scrollMode = isScroll(spell?.id)
+  const spellExtra = spell && caster ? (scrollMode ? { scroll: { charId: caster.id, itemId: spell.id.slice(7) } } : { spell: { charId: caster.id, slotLevel: spell.level === 0 ? 0 : slotLv } }) : {}
+  const noSlot = !!spell && !scrollMode && spell.level > 0 && !availableSlots(cSlots, spell.level).some((o) => o.level === slotLv)
 
   const pick = (a: Attack) => { setSpellId(null); setWeapon(a.name); setToHit(a.toHit); setExpr(a.damage); setType(a.damageType); setDmgText('') }
   const rollAttack = () => {
@@ -511,11 +525,11 @@ function AttackSheet({ attacker, target, onClose, onApply, caster }: {
           <div className="chips-row wrap">
             {castable.map((sp) => (
               <button key={sp.id} className={'chip ' + (spellId === sp.id ? 'on' : '')} onClick={() => (spellId === sp.id ? setSpellId(null) : pickSpell(sp))}>
-                {sp.damageType ? DAMAGE_ICONS[sp.damageType] : '🛡'} {sp.name} <small>{sp.level === 0 ? 'cantrip' : `lv ${sp.level}`}</small>
+                {isScroll(sp.id) ? '📜' : sp.damageType ? DAMAGE_ICONS[sp.damageType] : '🛡'} {sp.name} <small>{sp.level === 0 ? 'cantrip' : `lv ${sp.level}`}</small>
               </button>
             ))}
           </div>
-          {spell && spell.level > 0 && (
+          {spell && !scrollMode && spell.level > 0 && (
             <div className="chips-row wrap">
               {cSlots!.max.map((m, i) => i + 1 >= spell.level && m > 0 && (
                 <button key={i} className={'chip ' + (slotLv === i + 1 ? 'on' : '')} disabled={m - cSlots!.used[i] <= 0} onClick={() => pickSpell(spell, i + 1)}>
@@ -526,11 +540,12 @@ function AttackSheet({ attacker, target, onClose, onApply, caster }: {
           )}
           {spell && (
             <div className="reminder-item small">
-              {damageFor(spell, slotLv, caster!.level) && <>💥 <b>{damageFor(spell, slotLv, caster!.level)}</b> {spell.damageType}. </>}
+              {damageFor(spell, Math.max(1, slotLv), scrollMode ? 1 : caster!.level) && <>💥 <b>{damageFor(spell, Math.max(1, slotLv), scrollMode ? 1 : caster!.level)}</b> {spell.damageType}. </>}
               {spell.save && <>🎯 Target saves: <b>{spell.save}</b>. </>}
-              {spell.attack && <>Spell attack {fmtMod(charProf(caster!) + spellMod(caster!))} to hit. </>}
+              {spell.attack && !scrollMode && <>Spell attack {fmtMod(charProf(caster!) + spellMod(caster!))} to hit. </>}
               {spell.concentration && <>Concentration. </>}
-              {spell.level > 0 && <>Uses a level-{slotLv} slot when applied.</>}
+              {scrollMode && <>📜 Scroll: DC <b>{scrollStats(spell.level).dc}</b>, attack <b>+{scrollStats(spell.level).attack}</b>. Used up when applied (no slot). </>}
+              {!scrollMode && spell.level > 0 && <>Uses a level-{slotLv} slot when applied.</>}
               {noSlot && <b style={{ color: '#f08a78' }}> No slot of that level left!</b>}
             </div>
           )}

@@ -236,11 +236,12 @@ function Inventory({ d, commit, giveTargets, onGive }: {
       {it && (
         <div className="item-actions panel">
           <b>{it.name}</b>{it.qty > 1 && <span className="muted"> ×{it.qty}</span>}
-          {it.description && <div className="small muted">{it.description}</div>}
+          {it.description && <div className="small muted spell-desc">{it.description}</div>}
           <div className="row">
             {(it.kind === 'armor' || it.kind === 'weapon') && (it.equipped
               ? <button className="btn sm" onClick={() => { commit(unequip(d, it.id)); setMsg(`Unequipped ${it.name}.`) }}>Unequip</button>
               : <button className="btn sm primary" onClick={() => { commit(equip(d, it.id)); setMsg(it.kind === 'armor' ? `Equipped ${it.name} — AC and armor effects updated.` : `Equipped ${it.name} — added to attacks.`) }}>Equip</button>)}
+            {it.kind === 'scroll' && <button className="btn sm primary" onClick={() => { const r = useItem(d, it.id); commit(r.char); setMsg(r.message); if (it.qty <= 1) setSel(null) }}>📜 Use scroll</button>}
             {it.kind === 'consumable' && <button className="btn sm primary" onClick={() => { const r = useItem(d, it.id); commit(r.char); setMsg(r.message); if (it.qty <= 1) setSel(null) }}>Use</button>}
             {onGive && giveTargets.length > 0 && <button className="btn sm" onClick={() => setGiving(!giving)}>Give…</button>}
             <button className="btn sm danger" onClick={() => { if (confirm(`Drop ${it.name}${it.qty > 1 ? ` (all ${it.qty})` : ''}?`)) { commit(removeItem(d, it.id)); setMsg(`Dropped ${it.name}.`); close() } }}>Drop</button>
@@ -261,7 +262,7 @@ function Inventory({ d, commit, giveTargets, onGive }: {
         </div>
       )}
       <button className="btn ghost sm" onClick={() => setAdding(!adding)}>{adding ? 'Done adding' : '+ Add item'}</button>
-      {adding && <ItemPicker onAdd={(x) => { commit(addItem(d, x)); setMsg(`Added ${x.name}.`) }} />}
+      {adding && <ItemPicker customSpells={(d.spells ?? []).filter((s) => !s.srd)} onAdd={(x) => { commit(addItem(d, x)); setMsg(`Added ${x.name}.`) }} />}
     </div>
   )
 }

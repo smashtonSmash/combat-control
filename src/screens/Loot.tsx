@@ -133,7 +133,7 @@ export default function Loot({ chests, saveChest, deleteChest, characters, onGiv
             </div>
           )}
           {!readOnly && <button className="btn ghost sm" onClick={() => setAdding(!adding)}>{adding ? 'Done adding' : '+ Add items'}</button>}
-          {!readOnly && adding && <ItemPicker onAdd={(it) => saveChest({ ...chest, items: [...chest.items, it], updated: Date.now() })} />}
+          {!readOnly && adding && <ItemPicker customSpells={characters.flatMap((c) => (c.spells ?? []).filter((s) => !s.srd))} onAdd={(it) => saveChest({ ...chest, items: [...chest.items, it], updated: Date.now() })} />}
         </div>
       )}
 

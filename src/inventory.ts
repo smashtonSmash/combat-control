@@ -3,8 +3,29 @@ import { uid } from './types'
 import { TIER_SHORT, armorAc, armorById, armorLabel, type Tier } from './armor'
 import { abilityMod, rollExpression } from './dice'
 import { charProf } from './seed'
+import { damageFor, scrollStats, type CharSpell } from './spells'
 
-export const KIND_ICON: Record<Item['kind'], string> = { armor: '🛡', weapon: '⚔️', consumable: '🧪', misc: '📦' }
+export const KIND_ICON: Record<Item['kind'], string> = { armor: '🛡', weapon: '⚔️', consumable: '🧪', scroll: '📜', misc: '📦' }
+
+/** A spell scroll anyone can use (house rule: no class/ability check). */
+export function scrollItem(spell: CharSpell): Item {
+  const st = scrollStats(spell.level)
+  return { id: uid(), name: `Scroll of ${spell.name}`, kind: 'scroll', qty: 1,
+    description: `${spell.level === 0 ? 'Cantrip' : `Level ${spell.level}`} spell scroll · save DC ${st.dc} · spell attack +${st.attack}${spell.save ? ` · ${spell.save} save` : ''}\n\n${spell.description}`,
+    scroll: { kind: 'spell', spell: { ...spell, id: uid(), prepared: false } } }
+}
+
+/** Cast a spell scroll (no slot): rolls damage at the printed level. */
+export function scrollCastText(who: string, spell: CharSpell) {
+  const st = scrollStats(spell.level)
+  const dice = damageFor(spell, Math.max(1, spell.level), 1)
+  let t = `${who} reads a Scroll of ${spell.name} (level ${spell.level}, DC ${st.dc}, +${st.attack} to hit).`
+  if (dice) { const r = rollExpression(dice); t += ` Damage ${dice}: ${r.detail} = ${r.total} ${spell.damageType ?? ''}.` }
+  if (spell.save) t += ` Targets save: ${spell.save} vs DC ${st.dc}.`
+  if (spell.effect === 'resistance') t += ` Grants resistance to ${spell.effectType}${spell.effectRounds ? ` for ${spell.effectRounds} rounds` : ''}.`
+  if (spell.effectNote && spell.effect === 'buff') t += ` ${spell.effectNote}.`
+  return t + ' The scroll crumbles to dust.'
+}
 
 export const potionOfHealing = (): Item => ({ id: uid(), name: 'Potion of Healing', kind: 'consumable', qty: 1, heal: '2d4+2', description: 'Drink to regain 2d4+2 HP.' })
 export const armorItem = (armorId: string, tier: Tier): Item => {
@@ -71,7 +92,7 @@ export function removeItem(c: Character, itemId: string, qty = Infinity): Charac
 export function addItem(c: Character, item: Item): Character {
   const inv = c.inventory ?? []
   // stack identical unequipped consumables/misc
-  const same = (item.kind === 'consumable' || item.kind === 'misc') && inv.find((x) => x.kind === item.kind && x.name === item.name && x.heal === item.heal)
+  const same = (item.kind === 'consumable' || item.kind === 'misc' || item.kind === 'scroll') && inv.find((x) => x.kind === item.kind && x.name === item.name && x.heal === item.heal)
   if (same) return { ...c, inventory: inv.map((x) => (x === same ? { ...x, qty: x.qty + item.qty } : x)) }
   return { ...c, inventory: [...inv, { ...item, equipped: false }] }
 }
@@ -80,6 +101,7 @@ export function useItem(c: Character, itemId: string): { char: Character; messag
   const it = (c.inventory ?? []).find((x) => x.id === itemId)
   if (!it) return { char: c, message: '' }
   let char = removeItem(c, itemId, 1)
+  if (it.kind === 'scroll' && it.scroll?.kind === 'spell') return { char, message: scrollCastText(c.name, it.scroll.spell) }
   if (it.heal) {
     const r = rollExpression(it.heal)
     const cur = c.currentHp ?? c.maxHp

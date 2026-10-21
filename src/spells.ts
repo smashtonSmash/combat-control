@@ -108,4 +108,13 @@ export function spendSlot(slots: Slots, level: number): Slots | null {
   const used = [...slots.used]; used[i] = (used[i] ?? 0) + 1
   return { ...slots, used }
 }
+/** Standard spell-scroll table: save DC and attack bonus by spell level (cantrips use the 1st-level row). */
+export function scrollStats(level: number): { dc: number; attack: number } {
+  if (level <= 2) return { dc: 13, attack: 5 }
+  if (level <= 4) return { dc: 15, attack: 7 }
+  if (level <= 6) return { dc: 17, attack: 9 }
+  if (level <= 8) return { dc: 18, attack: 10 }
+  return { dc: 19, attack: 11 }
+}
+
 export const restoreAll = (slots: Slots): Slots => ({ ...slots, used: pad([]) })
