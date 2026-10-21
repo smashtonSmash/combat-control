@@ -11,6 +11,10 @@ import { charProf } from '../seed'
 import { ItemCard, ItemPicker } from '../components/Items'
 import { SpellsSection } from '../components/Spells'
 import { addItem, equip, removeItem, unequip, useItem } from '../inventory'
+import { FeatureEditor, OriginsPanel, SRC_ICON } from '../components/Origins'
+import { ABIL_KEYS, ABIL_NAMES, SKILLS, applyBonuses, baseAbilities, saveMod, skillMod, totalBonus } from '../origins'
+import { Portrait, PortraitPicker } from '../components/Portrait'
+import { KIND_ICON } from '../inventory'
 
 const blank = (): Character => ({
   id: uid(), name: '', cls: '', level: 1, race: '',
@@ -20,23 +24,39 @@ const blank = (): Character => ({
 
 export type GiveFn = (from: Character, toId: string, itemId: string) => Promise<boolean> | boolean
 
-export default function Characters({ characters, onSave, onDelete, giveTargets = [], onGive }: {
+export default function Characters({ characters, onSave, onDelete, giveTargets = [], onGive, customBudget = 3, onBudget }: {
   characters: Character[]; onSave: (c: Character) => void; onDelete: (id: string) => void
   giveTargets?: { id: string; name: string }[]; onGive?: GiveFn
+  customBudget?: number; onBudget?: (n: number) => void
 }) {
   const [edit, setEdit] = useState<Character | null>(null)
+  const [viewId, setViewId] = useState<string | null>(null)
+  const [budgetOpen, setBudgetOpen] = useState(false)
+  const viewing = characters.find((c) => c.id === viewId)
   return (
     <div className="screen">
       <div className="screen-head">
         <h1>Characters</h1>
-        <button className="btn primary" onClick={() => setEdit(blank())}>＋ New</button>
+        <div className="row">
+          {onBudget && <button className="btn sm" aria-label="Origin settings" onClick={() => setBudgetOpen(!budgetOpen)}>⚙</button>}
+          <button className="btn primary" onClick={() => setEdit(blank())}>＋ New</button>
+        </div>
       </div>
+      {budgetOpen && onBudget && (
+        <div className="panel">
+          <Stepper label="Custom origin ability budget (DM)" value={customBudget} min={0} max={10} onChange={onBudget} />
+          <div className="small muted">Points players allocate for Custom / non-SRD races and Custom backgrounds (max +2 per ability). Default +3.</div>
+        </div>
+      )}
       {characters.length === 0 && <div className="empty">No characters yet. Tap <b>＋ New</b> to make your first sheet.</div>}
       <div className="char-list">
         {characters.map((c) => (
-          <button key={c.id} className="char-card" onClick={() => setEdit(structuredClone(c))}>
+          <button key={c.id} className="char-card" onClick={() => setViewId(c.id)}>
             {c.sample && <div className="sample-tag">SAMPLE</div>}
-            <div className="ac-shield lg" style={c.armorTier ? { filter: `drop-shadow(0 0 6px ${TIER_COLORS[c.armorTier]})` } : undefined}><small>AC</small><b>{c.ac}</b></div>
+            <div className="cc-left">
+              <Portrait src={c.portrait} name={c.name} size={60} />
+              <div className="ac-shield" style={c.armorTier ? { filter: `drop-shadow(0 0 6px ${TIER_COLORS[c.armorTier]})` } : undefined}><small>AC</small><b>{c.ac}</b></div>
+            </div>
             <div className="char-main">
               <b className="char-name">{c.name || 'Unnamed'}</b>
               <div className="muted small">{[c.race, c.cls, c.level && `Lv ${c.level}`].filter(Boolean).join(' · ')}</div>
@@ -52,9 +72,13 @@ export default function Characters({ characters, onSave, onDelete, giveTargets =
           </button>
         ))}
       </div>
+      {viewing && !edit && (
+        <CharacterView c={viewing} onClose={() => setViewId(null)} onEdit={() => setEdit(structuredClone(viewing))} onPersist={onSave}
+          giveTargets={giveTargets.filter((t) => t.id !== viewing.id)} onGive={onGive} />
+      )}
       {edit && (
-        <CharacterSheet c={edit} isNew={!characters.some((x) => x.id === edit.id)} onClose={() => setEdit(null)}
-          onSave={(c) => { onSave(c); setEdit(null) }} onPersist={onSave}
+        <CharacterSheet c={edit} customBudget={customBudget} isNew={!characters.some((x) => x.id === edit.id)} onClose={() => setEdit(null)}
+          onSave={(c) => { onSave(c); setEdit(null); setViewId(c.id) }} onPersist={onSave}
           giveTargets={giveTargets.filter((t) => t.id !== edit.id)} onGive={onGive}
           onDelete={() => { if (confirm(`Delete ${edit.name || 'this character'}?`)) { onDelete(edit.id); setEdit(null) } }} />
       )}
@@ -64,32 +88,50 @@ export default function Characters({ characters, onSave, onDelete, giveTargets =
 
 const ABILS: (keyof Abilities)[] = ['str', 'dex', 'con', 'int', 'wis', 'cha']
 
-function CharacterSheet({ c, isNew, onClose, onSave, onDelete, onPersist, giveTargets, onGive }: {
+function CharacterSheet({ c, isNew, onClose, onSave, onDelete, onPersist, giveTargets, onGive, customBudget }: {
   c: Character; isNew: boolean; onClose: () => void; onSave: (c: Character) => void; onDelete: () => void
-  onPersist: (c: Character) => void; giveTargets: { id: string; name: string }[]; onGive?: GiveFn
+  onPersist: (c: Character) => void; giveTargets: { id: string; name: string }[]; onGive?: GiveFn; customBudget: number
 }) {
   const [d, setD] = useState(c)
+  const [picking, setPicking] = useState(false)
+  const bonus = totalBonus(d)
   const recalc = (n: Character): Character => {
     const ac = armorAc(n, abilityMod(n.abilities.dex))
     return { ...n, ...(ac !== null && !n.acManual ? { ac } : {}), ...(n.armorId ? { armor: armorLabel(n) } : {}) }
   }
-  const set = (p: Partial<Character>) => setD((cur) => recalc({ ...cur, ...p, tierV: 2 }))
+  const set = (p: Partial<Character>) => setD((cur) => {
+    const n = { ...cur, ...p, tierV: 2 }
+    // keep initiative following DEX if it was the DEX modifier
+    if ((p.initMod === undefined || p.initMod === cur.initMod) && cur.initMod === abilityMod(cur.abilities.dex)) n.initMod = abilityMod(n.abilities.dex)
+    return recalc(n)
+  })
   return (
     <Sheet open onClose={onClose} tall title={isNew ? 'New character' : d.name || 'Character'}
       footer={<button className="btn big primary" disabled={!d.name.trim()} onClick={() => onSave(d)}>Save character</button>}>
-      <TextField label="Name" value={d.name} onChange={(v) => set({ name: v })} placeholder="Thorin" />
-      <div className="grid3">
-        <TextField label="Race" value={d.race} onChange={(v) => set({ race: v })} placeholder="Dwarf" />
-        <TextField label="Class" value={d.cls} onChange={(v) => set({ cls: v })} placeholder="Fighter" />
-        <NumField label="Level" value={d.level} onChange={(v) => set({ level: v })} />
+      <div className="edit-top">
+        <button type="button" className="portrait-btn" onClick={() => setPicking(true)} aria-label="Change portrait">
+          <Portrait src={d.portrait} name={d.name} size={84} /><span>📷</span>
+        </button>
+        <div className="grow">
+          <TextField label="Name" value={d.name} onChange={(v) => set({ name: v })} placeholder="Thorin" />
+          <div className="grid2">
+            <NumField label="Level" value={d.level} onChange={(v) => set({ level: v })} />
+            <NumField label="Speed (ft)" value={d.speed ?? 30} onChange={(v) => set({ speed: v })} />
+          </div>
+        </div>
       </div>
-      <div className="mini-label">Ability scores</div>
+      {d.portrait && <button className="link small" onClick={() => set({ portrait: undefined })}>Remove portrait</button>}
+      {picking && <PortraitPicker onCancel={() => setPicking(false)} onPick={(u) => { set({ portrait: u }); setPicking(false) }} />}
+      <OriginsPanel d={d} setD={(n) => set(n)} customBudget={customBudget} />
+      {!d.origin?.raceKey && !d.origin?.classKey && (d.race || d.cls) && <div className="small muted">Current: {[d.race, d.cls].filter(Boolean).join(' · ')} (pick from the lists to add traits and features)</div>}
+      <div className="mini-label">Ability scores {Object.keys(bonus).some((k) => bonus[k as keyof typeof bonus]) && <span className="muted">(base + bonuses)</span>}</div>
       <div className="abil-grid">
         {ABILS.map((k) => (
           <label key={k} className="abil">
             <span>{k.toUpperCase()}</span>
-            <input inputMode="numeric" value={String(d.abilities[k])}
-              onChange={(e) => set({ abilities: { ...d.abilities, [k]: parseInt(e.target.value) || 0 } })} />
+            <input inputMode="numeric" aria-label={`${k} base score`} value={String(baseAbilities(d)[k])}
+              onChange={(e) => set(applyBonuses({ ...d, baseAbilities: { ...baseAbilities(d), [k]: parseInt(e.target.value) || 0 } }))} />
+            {bonus[k] ? <small className="gold">+{bonus[k]} → {d.abilities[k]}</small> : null}
             <b>{fmtMod(abilityMod(d.abilities[k]))}</b>
           </label>
         ))}
@@ -99,6 +141,7 @@ function CharacterSheet({ c, isNew, onClose, onSave, onDelete, onPersist, giveTa
         <NumField label={d.armorId && !d.acManual ? 'AC (auto)' : 'AC'} value={d.ac} onChange={(v) => set({ ac: v, acManual: d.armorId ? true : d.acManual })} />
         <NumField label="Max HP" value={d.maxHp} onChange={(v) => set({ maxHp: v })} />
         <NumField label="Current HP" value={d.currentHp ?? d.maxHp} onChange={(v) => set({ currentHp: v })} />
+        <NumField label="Temp HP" value={d.tempHp ?? 0} onChange={(v) => set({ tempHp: Math.max(0, v) || undefined })} />
         <NumField label="Init mod" value={d.initMod} onChange={(v) => set({ initMod: v })} />
       </div>
       <button className="link small" onClick={() => set({ initMod: abilityMod(d.abilities.dex) })}>Use DEX modifier ({fmtMod(abilityMod(d.abilities.dex))}) for initiative</button>
@@ -109,7 +152,9 @@ function CharacterSheet({ c, isNew, onClose, onSave, onDelete, onPersist, giveTa
         {d.profOverride !== undefined && <button className="link small" onClick={() => set({ profOverride: undefined })}>Auto from level (+{profFromLevel(d.level)})</button>}
       </div>
       <CoinPurse d={d} set={set} />
-      <div className="mini-label">Traits & homebrew (resistances, armor perks…)</div>
+      <div className="mini-label">🧬 Traits & features</div>
+      <FeatureEditor features={d.features ?? []} onChange={(f) => set({ features: f })} />
+      <div className="mini-label">Combat traits & homebrew (resistances, armor perks…)</div>
       <TraitEditor traits={d.traits} onChange={(t) => set({ traits: t })} />
       <div className="mini-label">Attacks</div>
       <AttackEditor attacks={d.attacks} onChange={(a) => set({ attacks: a })} />
@@ -264,5 +309,83 @@ function Inventory({ d, commit, giveTargets, onGive }: {
       <button className="btn ghost sm" onClick={() => setAdding(!adding)}>{adding ? 'Done adding' : '+ Add item'}</button>
       {adding && <ItemPicker customSpells={(d.spells ?? []).filter((s) => !s.srd)} onAdd={(x) => { commit(addItem(d, x)); setMsg(`Added ${x.name}.`) }} />}
     </div>
+  )
+}
+
+function CharacterView({ c, onClose, onEdit, onPersist, giveTargets, onGive }: {
+  c: Character; onClose: () => void; onEdit: () => void; onPersist: (c: Character) => void; giveTargets: { id: string; name: string }[]; onGive?: GiveFn
+}) {
+  const prof = charProf(c)
+  const cur = c.currentHp ?? c.maxHp, temp = c.tempHp ?? 0
+  const pct = Math.max(0, Math.min(100, (cur / Math.max(1, c.maxHp)) * 100))
+  const tpct = Math.min(100 - pct, (temp / Math.max(1, c.maxHp)) * 100)
+  const equipped = (c.inventory ?? []).filter((i) => i.equipped)
+  const [, force] = useState(0)
+  const commit = (n: Character) => { onPersist(n); force((x) => x + 1) }
+  return (
+    <Sheet open onClose={onClose} tall title={<span className="cv-titlebar">{c.name || 'Character'}</span>}
+      footer={<button className="btn big primary" onClick={onEdit}>✎ Edit character</button>}>
+      <div className="cv">
+        <div className="cv-hero">
+          <Portrait src={c.portrait} name={c.name} size={132} className="cv-portrait" />
+          <div className="cv-id">
+            <h2>{c.name || 'Unnamed'}</h2>
+            <div className="cv-sub">{[c.race, c.cls && `${c.cls} ${c.level}`].filter(Boolean).join(' · ') || `Level ${c.level}`}</div>
+            {c.background && <div className="cv-bg">📖 {c.background}</div>}
+            <button className="btn sm cv-edit" onClick={onEdit}>✎ Edit</button>
+          </div>
+        </div>
+        <div className="cv-hp" aria-label={`HP ${cur} of ${c.maxHp}${temp ? `, ${temp} temporary` : ''}`}>
+          <div className="cv-hp-bar"><i className={pct > 50 ? 'good' : pct > 25 ? 'mid' : 'low'} style={{ width: pct + '%' }} />{temp > 0 && <i className="temp" style={{ width: tpct + '%' }} />}</div>
+          <div className="cv-hp-nums"><b>{cur}</b><span>/ {c.maxHp} HP</span>{temp > 0 && <em>+{temp} temp</em>}</div>
+        </div>
+        <div className="cv-stats">
+          <div className="cv-stat"><div className="ac-shield lg" style={c.armorTier ? { filter: `drop-shadow(0 0 6px ${TIER_COLORS[c.armorTier]})` } : undefined}><small>AC</small><b>{c.ac}</b></div></div>
+          <div className="cv-stat"><b>{c.speed ?? 30}</b><small>ft speed</small></div>
+          <div className="cv-stat"><b>{fmtMod(c.initMod)}</b><small>initiative</small></div>
+          <div className="cv-stat"><b>+{prof}</b><small>proficiency</small></div>
+          {c.hitDie && <div className="cv-stat"><b>d{c.hitDie}</b><small>hit die</small></div>}
+        </div>
+        <div className="cv-abils">
+          {ABIL_KEYS.map((k) => (
+            <div key={k} className="cv-abil" title={ABIL_NAMES[k]}>
+              <small>{k.toUpperCase()}</small><b>{fmtMod(abilityMod(c.abilities[k]))}</b><span>{c.abilities[k]}</span>
+              <em className={(c.saves ?? []).includes(k) ? 'prof' : ''}>save {fmtMod(saveMod(c, k, prof))}</em>
+            </div>
+          ))}
+        </div>
+        <section className="cv-sec"><h3>Skills</h3>
+          <div className="cv-skills">{SKILLS.map(([s, ab]) => {
+            const p = (c.skills ?? []).includes(s)
+            return <div key={s} className={'cv-skill ' + (p ? 'prof' : '')}><i>{p ? '●' : '○'}</i><span>{s} <small>{ab}</small></span><b>{fmtMod(skillMod(c, s, prof))}</b></div>
+          })}</div>
+        </section>
+        <section className="cv-sec"><h3>⚔️ Equipped</h3>
+          {equipped.length === 0 && !c.armor ? <div className="small muted">Nothing equipped.</div> : (
+            <div className="cv-gear">
+              {c.armor && <div>🛡 {c.armor}{c.armorTier && <> <TierBadge tier={c.armorTier} /></>}</div>}
+              {equipped.filter((i) => i.kind !== 'armor').map((i) => <div key={i.id}>{KIND_ICON[i.kind]} {i.name}</div>)}
+              {c.attacks.map((a) => <div key={a.id} className="small muted">🎯 {a.name} {fmtMod(a.toHit)} · {a.damage} {a.damageType}</div>)}
+            </div>
+          )}
+        </section>
+        <section className="cv-sec"><h3>💰 Coins</h3>
+          <div className="cv-coins"><span className="coin-pill gold">{c.purse?.gold ?? 0} g</span><span className="coin-pill silver">{c.purse?.silver ?? 0} s</span></div>
+        </section>
+        <section className="cv-sec"><h3>🎒 Inventory</h3>
+          <Inventory d={c} commit={commit} giveTargets={giveTargets} onGive={onGive} />
+        </section>
+        {(c.spells?.length || c.spellcasting || c.slots) ? <section className="cv-sec"><h3>✨ Spells</h3><SpellsSection d={c} commit={commit} /></section> : null}
+        <section className="cv-sec"><h3>🧬 Traits & features</h3>
+          {(c.features ?? []).length === 0 && c.traits.length === 0 && <div className="small muted">None yet — tap Edit to add some.</div>}
+          {(c.features ?? []).map((f) => (
+            <details key={f.id} className="cv-feature"><summary>{SRC_ICON[f.source]} <b>{f.name}</b></summary>{f.desc ? <p>{f.desc}</p> : <p className="muted">No description.</p>}</details>
+          ))}
+          {c.traits.map((t) => <div key={t.id} className={'badge trait effect-' + t.effect}>✦ {t.name || EFFECT_LABEL[t.effect]} {t.damageTypes.map((x) => DAMAGE_ICONS[x]).join('')}</div>)}
+          {(c.proficiencies ?? []).length > 0 && <div className="small muted cv-profs">Proficiencies: {c.proficiencies!.join(', ')}</div>}
+        </section>
+        {c.notes && <section className="cv-sec"><h3>📝 Notes</h3><p className="cv-notes">{c.notes}</p></section>}
+      </div>
+    </Sheet>
   )
 }

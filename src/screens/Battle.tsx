@@ -1,3 +1,4 @@
+import { Portrait } from '../components/Portrait'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Attack, Character, Combatant, DamageType, Encounter, LogEntry, Side, Trait } from '../types'
 import { CONDITIONS, DAMAGE_ICONS, DAMAGE_TYPES, uid } from '../types'
@@ -13,12 +14,12 @@ import { charProf } from '../seed'
 
 type SetEnc = (f: (e: Encounter) => Encounter) => void
 
-interface Props { encounter: Encounter; setEncounter: SetEnc; characters: Character[]; onSpendSlot?: (charId: string, level: number) => void; onUseScroll?: (charId: string, itemId: string) => void; onRest?: (kind: 'long' | 'short') => void }
+interface Props { encounter: Encounter; setEncounter: SetEnc; characters: Character[]; onSpendSlot?: (charId: string, level: number) => void; onUseScroll?: (charId: string, itemId: string) => void; onRest?: (kind: 'long' | 'short') => void; portraits?: Record<string, string | undefined> }
 
 const log = (e: Encounter, text: string, kind: LogEntry['kind']): LogEntry[] =>
   [{ id: uid(), round: e.round, text, kind, time: Date.now() }, ...e.log].slice(0, 200)
 
-export default function Battle({ encounter, setEncounter, characters, onSpendSlot, onUseScroll, onRest }: Props) {
+export default function Battle({ encounter, setEncounter, characters, onSpendSlot, onUseScroll, onRest, portraits = {} }: Props) {
   const { combatants, round, turnId } = encounter
   const party = combatants.filter((c) => c.side === 'party')
   const monsters = combatants.filter((c) => c.side === 'monster')
@@ -183,7 +184,7 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
   const selC = byId(selected)
 
   const card = (c: Combatant) => (
-    <CombatantCard key={c.id} c={c}
+    <CombatantCard key={c.id} c={c} portrait={c.characterId ? portraits[c.characterId] : undefined}
       isTurn={c.id === turnId} isSelected={c.id === selected}
       isOver={ghost?.over === c.id} isDragging={ghost?.id === c.id}
       flash={flash?.id === c.id ? flash : null}
@@ -324,8 +325,8 @@ function nextName(all: Combatant[], base: string) {
 }
 
 // ---------------- Card ----------------
-function CombatantCard({ c, isTurn, isSelected, isOver, isDragging, flash, onPointerDown, onHandleDown, onTap, onHp, onMenu }: {
-  c: Combatant; isTurn: boolean; isSelected: boolean; isOver: boolean; isDragging: boolean
+function CombatantCard({ c, portrait, isTurn, isSelected, isOver, isDragging, flash, onPointerDown, onHandleDown, onTap, onHp, onMenu }: {
+  c: Combatant; portrait?: string; isTurn: boolean; isSelected: boolean; isOver: boolean; isDragging: boolean
   flash: { text: string; kind: string; key: number } | null
   onPointerDown: (e: React.PointerEvent) => void; onHandleDown: (e: React.PointerEvent) => void
   onTap: () => void; onHp: () => void; onMenu: () => void
@@ -345,6 +346,7 @@ function CombatantCard({ c, isTurn, isSelected, isOver, isDragging, flash, onPoi
           <div className="ac-shield" title="Armor Class" style={c.armorTier ? { filter: `drop-shadow(0 0 5px ${TIER_COLORS[c.armorTier]})` } : undefined}><small>AC</small><b>{c.ac}</b></div>
           {c.armorTier && <span className="ac-tier-dot" style={{ color: TIER_COLORS[c.armorTier] }}>◆{TIER_SHORT[c.armorTier]}</span>}
         </div>
+        {portrait && <Portrait src={portrait} name={c.name} size={34} className="ccard-portrait" />}
         <div className="ccard-name">
           <b>{c.name}</b>
           <span className="armor">{c.armor || '—'}</span>

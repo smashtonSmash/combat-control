@@ -22,11 +22,11 @@ export function useSession() {
   return { session, ready }
 }
 
-export interface CampaignInfo { id: string; name: string; join_code: string; role: 'dm' | 'player'; dm_id: string }
+export interface CampaignInfo { id: string; name: string; join_code: string; role: 'dm' | 'player'; dm_id: string; settings?: { originBudget?: number } }
 export interface MemberInfo { user_id: string; role: 'dm' | 'player'; display_name: string }
 
 export async function listCampaigns(userId: string): Promise<CampaignInfo[]> {
-  const { data, error } = await supabase.from('members').select('role, campaigns(id, name, join_code, dm_id)').eq('user_id', userId)
+  const { data, error } = await supabase.from('members').select('role, campaigns(id, name, join_code, dm_id, settings)').eq('user_id', userId)
   if (error) throw error
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data ?? []).filter((r: any) => r.campaigns).map((r: any) => ({ ...r.campaigns, role: r.role }))
@@ -108,7 +108,17 @@ export function useCampaign(cid: string | null) {
       return ex ? cs.map((x) => (x.id === c.id ? row : x)) : [...cs, row]
     })
     const { error } = await supabase.from('characters').upsert({ id: c.id, campaign_id: cid, data: c, ...(ownerId ? { owner_id: ownerId } : {}) })
-    if (error) { setError(error.message); load() }
+    if (error) { setError(error.message); load(); return }
+    // portraits picked as data URLs are moved to Storage once the character row exists
+    if (c.portrait?.startsWith('data:')) {
+      try {
+        const { uploadPortrait } = await import('./components/Portrait')
+        const ref = await uploadPortrait(cid, c.id, c.portrait)
+        const n = { ...c, portrait: ref }
+        setChars((cs) => cs.map((x) => (x.id === c.id ? { ...x, data: n } : x)))
+        await supabase.from('characters').update({ data: n }).eq('id', c.id)
+      } catch (e) { setError('Portrait upload failed: ' + (e as Error).message) }
+    }
   }, [cid, load])
   const deleteChar = useCallback(async (id: string) => {
     setChars((cs) => cs.filter((x) => x.id !== id))

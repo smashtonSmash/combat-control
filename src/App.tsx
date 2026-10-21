@@ -13,7 +13,7 @@ import { addItem, removeItem } from './inventory'
 import { effectiveSlots, isCaster } from './components/Spells'
 import { loadSpells, restoreAll, spendSlot } from './spells'
 import { applyDelta } from './casino/money'
-import { listCampaigns, useCampaign, useSession, type CampaignInfo } from './cloud'
+import { listCampaigns, useCampaign, useSession, supabase, type CampaignInfo } from './cloud'
 import { CloudSheet } from './components/Cloud'
 import { uid } from './types'
 import { migrateTiers } from './armor'
@@ -207,6 +207,15 @@ export default function App() {
   const [dismissedReveal, setDismissedReveal] = useState<number | null>(null)
   const showReveal = !!revealed && dismissedReveal !== revealed.revealedAt
   const allChars: Character[] = online ? cloud.chars.map((r) => r.data) : localChars
+  // custom-origin ability budget: per campaign (DM sets it) or local when offline
+  const [localBudget, setLocalBudget] = useStored<number>('originBudget', () => 3)
+  const customBudget = online ? active?.settings?.originBudget ?? 3 : localBudget
+  const setBudget = online
+    ? (isDM ? async (n: number) => {
+        setCampaigns((cs) => cs.map((x) => (x.id === active!.id ? { ...x, settings: { ...x.settings, originBudget: n } } : x)))
+        await supabase.from('campaigns').update({ settings: { ...active!.settings, originBudget: n } }).eq('id', active!.id)
+      } : undefined)
+    : setLocalBudget
   const giveItemTo = (charId: string, item: Item) => {
     const c = allChars.find((x) => x.id === charId)
     if (c) saveCharacter(addItem(c, item))
@@ -264,10 +273,10 @@ export default function App() {
       {online && !isDM && tab === 'battle' && <div className="live-banner">👁 Live view of {active!.name}’s battle — your DM runs combat. Damage they deal updates your sheet’s HP.</div>}
       {online && cloud.error && <div className="live-banner" style={{ borderColor: '#a83a28', background: '#2a1210' }}>⚠ Sync problem: {cloud.error} <button className="link" onClick={() => cloud.setError('')}>dismiss</button></div>}
       <main key={tab} className="fade-in">
-        {tab === 'battle' && <Battle encounter={encounter} setEncounter={setEnc} characters={characters} onSpendSlot={spendCharSlot} onUseScroll={useScroll} onRest={restAll} />}
+        {tab === 'battle' && <Battle encounter={encounter} setEncounter={setEnc} characters={characters} onSpendSlot={spendCharSlot} onUseScroll={useScroll} onRest={restAll} portraits={Object.fromEntries(allChars.map((c) => [c.id, c.portrait]))} />}
         {tab === 'characters' && (
           <>
-            <Characters characters={characters} onSave={saveCharacter} onDelete={deleteCharacter} giveTargets={allChars.map((c) => ({ id: c.id, name: c.name }))} onGive={giveBetween} />
+            <Characters characters={characters} onSave={saveCharacter} onDelete={deleteCharacter} giveTargets={allChars.map((c) => ({ id: c.id, name: c.name }))} onGive={giveBetween} customBudget={customBudget} onBudget={setBudget} />
             {hasSamples && <div className="center pad"><button className="btn ghost danger" onClick={removeSamples}>Remove all sample data</button></div>}
           </>
         )}

@@ -205,3 +205,33 @@ begin
 end $$;
 revoke all on function public.take_loot(text, text, text, text, int, int) from public, anon;
 grant execute on function public.take_loot(text, text, text, text, int, int) to authenticated;
+
+-- ===== Campaign settings + character portraits (v5) =====
+alter table public.campaigns add column if not exists settings jsonb not null default '{}';
+
+-- Private bucket: portraits/<campaign_id>/<character_id>.jpg
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('portraits', 'portraits', false, 1048576, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
+
+-- can the current user write the portrait object at this path? (owner of the character, or the campaign DM)
+create or replace function public.can_write_portrait(path text) returns boolean
+language sql stable security definer set search_path = public as
+$$ select exists (
+  select 1 from characters ch
+  where ch.campaign_id::text = split_part(path, '/', 1)
+    and ch.id = regexp_replace(split_part(path, '/', 2), '\.[a-z]+$', '')
+    and (ch.owner_id = auth.uid() or is_dm(ch.campaign_id))
+) $$;
+create or replace function public.can_read_portrait(path text) returns boolean
+language sql stable security definer set search_path = public as
+$$ select exists (select 1 from members m where m.campaign_id::text = split_part(path, '/', 1) and m.user_id = auth.uid()) $$;
+
+drop policy if exists portraits_sel on storage.objects;
+create policy portraits_sel on storage.objects for select to authenticated using (bucket_id = 'portraits' and public.can_read_portrait(name));
+drop policy if exists portraits_ins on storage.objects;
+create policy portraits_ins on storage.objects for insert to authenticated with check (bucket_id = 'portraits' and public.can_write_portrait(name));
+drop policy if exists portraits_upd on storage.objects;
+create policy portraits_upd on storage.objects for update to authenticated using (bucket_id = 'portraits' and public.can_write_portrait(name)) with check (bucket_id = 'portraits' and public.can_write_portrait(name));
+drop policy if exists portraits_del on storage.objects;
+create policy portraits_del on storage.objects for delete to authenticated using (bucket_id = 'portraits' and public.can_write_portrait(name));

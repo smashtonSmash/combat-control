@@ -99,6 +99,20 @@ export interface Character extends ArmorFields {
   slots?: import('./spells').Slots
   /** slots edited by hand; don't auto-fill from class/level */
   slotsManual?: boolean
+  // ---- origins (race / class / background) ----
+  origin?: { raceKey?: string; subraceKey?: string; raceBonus?: Partial<Abilities>; classKey?: string; bgKey?: string; bgBonus?: Partial<Abilities> }
+  /** scores before race/background bonuses (abilities = base + bonuses) */
+  baseAbilities?: Abilities
+  background?: string
+  features?: import('./origins').Feature[]
+  hitDie?: number
+  saves?: (keyof Abilities)[]
+  skills?: string[]
+  proficiencies?: string[]
+  speed?: number
+  tempHp?: number
+  /** data: URL (offline) or 'sb:<storage path>?v=<ts>' (Supabase Storage) */
+  portrait?: string
 }
 
 export type Side = 'party' | 'monster'
