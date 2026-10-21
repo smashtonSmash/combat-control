@@ -21,7 +21,7 @@ export function ChestArt({ phase, small, drama = 0 }: { phase: ChestPhase; small
   const rivets = (xs: number[], y: number) => xs.map((x) => <g key={x + '-' + y}><circle cx={x} cy={y} r="2.6" fill={`url(#${gold})`} stroke="#4a300a" strokeWidth=".6" /><circle cx={x - .8} cy={y - .8} r=".8" fill="#fff8d0" /></g>)
   return (
     <div className={`chest3d ${phase} ${small ? 'small' : ''} ${drama ? 'drama' + drama : ''}`} aria-hidden>
-      <div className="chest-beam" /><div className="chest-seam" />
+      <div className="chest-halo" /><div className="chest-beam" />
       <div className="chest-sparkles">{Array.from({ length: 14 }, (_, i) => <i key={i} style={{ ['--x' as string]: `${(i * 37) % 100}%`, ['--d' as string]: `${(i * 0.29) % 2.6}s`, ['--s' as string]: `${3 + (i % 4)}px` }} />)}</div>
       <svg className="chest-inner" viewBox="0 0 200 30"><ellipse cx="100" cy="15" rx="92" ry="14" fill={`url(#${inner})`} /></svg>
       <svg className="chest-base-svg" viewBox="0 0 200 110">
@@ -51,6 +51,18 @@ export function ChestArt({ phase, small, drama = 0 }: { phase: ChestPhase; small
           <path d="M100 18 l4 8 9 1 -7 6 2 9 -8 -5 -8 5 2 -9 -7 -6 9 -1z" fill="#ffe28a" opacity=".85" />
         </svg>
       </div>
+      <div className="chest-lid-inner">
+        <svg viewBox="0 0 200 80">
+          <path d="M4 80 V6 Q4 2 10 2 H190 Q196 2 196 6 V80 z" fill={`url(#${gold})`} stroke="#4a300a" />
+          <path d="M14 78 V12 H186 V78 z" fill="#3a1f0c" />
+          <path d="M14 78 V12 H186 V78 z" fill={`url(#${grain})`} />
+          {[34, 56].map((y) => <line key={y} x1="14" y1={y} x2="186" y2={y} stroke="#1a0c04" strokeOpacity=".7" strokeWidth="1.5" />)}
+          <path d="M14 78 V12 H186 V78 z" fill={`url(#${inner})`} opacity=".45" />
+          {rivets([20, 180], 18)}{rivets([20, 180], 72)}
+          <path d="M100 22 l7 14 15 2 -11 10 3 15 -14 -8 -14 8 3 -15 -11 -10 15 -2z" fill="#ffe28a" stroke="#a8741f" strokeWidth="1.2" />
+        </svg>
+      </div>
+      <div className="chest-seam" /><div className="chest-keyglow" />
       <div className="chest-shadow" />
     </div>
   )
