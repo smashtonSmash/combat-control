@@ -8,12 +8,14 @@ import { coinsToSilver, splitEvenly, takeFrom } from '../loot'
 
 type Payload = { kind: 'item'; id: string } | { kind: 'pouch'; id: string }
 
-export default function Loot({ chests, saveChest, deleteChest, characters, onGiveItem, onGiveCoins, readOnly }: {
+export default function Loot({ chests, saveChest, deleteChest, characters, onGiveItem, onGiveCoins, readOnly, online, onOpenReveal }: {
   chests: Chest[]; saveChest: (k: Chest) => void; deleteChest: (id: string) => void
   characters: Character[]
   onGiveItem: (charId: string, item: Item) => void
   onGiveCoins: (charId: string, gold: number, silver: number) => void
   readOnly?: boolean
+  online?: boolean
+  onOpenReveal?: () => void
 }) {
   const [openId, setOpenId] = useState<string | null>(() => localStorage.getItem('dnd.lootChest'))
   useEffect(() => { if (openId) localStorage.setItem('dnd.lootChest', openId) }, [openId])
@@ -67,14 +69,14 @@ export default function Loot({ chests, saveChest, deleteChest, characters, onGiv
       const q = chest.pouches?.find((x) => x.id === p.id)
       if (!q) return
       onGiveCoins(charId, q.gold, q.silver)
-      saveChest({ ...chest, pouches: (chest.pouches ?? []).filter((x) => x.id !== q.id), updated: Date.now() })
+      saveChest({ ...chest, pouches: (chest.pouches ?? []).filter((x) => x.id !== q.id), updated: Date.now(), lastGiven: { text: `${who} got ${pouchLabel(q.gold, q.silver)}`, at: Date.now() } })
       setMsg(`${pouchLabel(q.gold, q.silver)} → ${who}`)
       return
     }
     const it = chest.items.find((i) => i.id === p.id)
     if (!it) return
     onGiveItem(charId, it)
-    saveChest({ ...chest, items: chest.items.filter((i) => i.id !== it.id), updated: Date.now() })
+    saveChest({ ...chest, items: chest.items.filter((i) => i.id !== it.id), updated: Date.now(), lastGiven: { text: `${who} got ${it.name}${it.qty > 1 ? ` ×${it.qty}` : ''}`, at: Date.now() } })
     setMsg(`✨ ${it.name}${it.qty > 1 ? ` ×${it.qty}` : ''} → ${who}`)
   }
 
@@ -96,6 +98,10 @@ export default function Loot({ chests, saveChest, deleteChest, characters, onGiv
           <div className="chest-head">
             <span className="chest-icon">🧰</span>
             {readOnly ? <b>{chest.name}</b> : <input className="grow" value={chest.name} onChange={(e) => saveChest({ ...chest, name: e.target.value })} />}
+            {!readOnly && online && (chest.revealedAt
+              ? <button className="btn sm danger" onClick={() => saveChest({ ...chest, revealedAt: null })}>🔒 Close chest</button>
+              : <button className="btn sm primary" onClick={() => saveChest({ ...chest, revealedAt: Date.now(), lastGiven: undefined })}>✨ Reveal to party</button>)}
+            {readOnly && chest.revealedAt && <button className="btn sm primary" onClick={onOpenReveal}>👀 View</button>}
             {!readOnly && <button className="icon-btn danger" aria-label="Delete chest" onClick={() => { if (confirm(`Delete ${chest.name}?`)) deleteChest(chest.id) }}>🗑</button>}
           </div>
           {chest.items.length === 0 && !(chest.pouches ?? []).length && <div className="small muted">Empty chest.</div>}
@@ -166,7 +172,7 @@ export default function Loot({ chests, saveChest, deleteChest, characters, onGiv
         <SplitSheet chest={chest} characters={characters} onClose={() => setSplitOpen(false)} onConfirm={(ids, leftoverTo) => {
           const r = splitEvenly(chest.gold, chest.silver, ids.length, leftoverTo)
           ids.forEach((id, i) => onGiveCoins(id, r.shares[i].gold, r.shares[i].silver))
-          saveChest({ ...chest, ...r.chest, updated: Date.now() })
+          saveChest({ ...chest, ...r.chest, updated: Date.now(), lastGiven: { text: `Coins split among ${ids.length}`, at: Date.now() } })
           setMsg(`⚖ Split ${chest.gold}g ${chest.silver}s among ${ids.length}${r.leftover ? ` (${r.leftover}s leftover → ${leftoverTo === 'chest' ? 'chest' : characters.find((c) => c.id === ids[0])?.name})` : ''}`)
           setSplitOpen(false)
         }} />

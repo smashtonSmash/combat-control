@@ -61,7 +61,10 @@ export interface Item {
   scroll?: ScrollData
 }
 
-export interface Chest { id: string; name: string; items: Item[]; gold: number; silver: number; pouches?: { id: string; gold: number; silver: number }[]; updated?: number }
+export interface Chest { id: string; name: string; items: Item[]; gold: number; silver: number; pouches?: { id: string; gold: number; silver: number }[]; updated?: number
+  /** shown to all players as a full-screen reveal while set (timestamp of the reveal) */
+  revealedAt?: number | null
+  lastGiven?: { text: string; at: number } }
 
 export interface Character extends ArmorFields {
   id: string

@@ -8,6 +8,7 @@ import Dice from './screens/Dice'
 import Campaign from './screens/Campaign'
 import Casino from './screens/Casino'
 import Loot from './screens/Loot'
+import { RevealOverlay } from './components/Reveal'
 import { addItem, removeItem } from './inventory'
 import { effectiveSlots, isCaster } from './components/Spells'
 import { loadSpells, restoreAll, spendSlot } from './spells'
@@ -201,6 +202,10 @@ export default function App() {
   const chests = online ? cloud.chests : localChests
   const saveChest = (k: Chest) => (online ? cloud.saveChest(k) : setLocalChests((ks) => (ks.some((x) => x.id === k.id) ? ks.map((x) => (x.id === k.id ? k : x)) : [...ks, k])))
   const deleteChest = (id: string) => (online ? cloud.deleteChest(id) : setLocalChests((ks) => ks.filter((x) => x.id !== id)))
+  // players see a full-screen reveal while the DM has a chest revealed
+  const revealed = online && !isDM ? chests.find((k) => k.revealedAt) : undefined
+  const [dismissedReveal, setDismissedReveal] = useState<number | null>(null)
+  const showReveal = !!revealed && dismissedReveal !== revealed.revealedAt
   const allChars: Character[] = online ? cloud.chars.map((r) => r.data) : localChars
   const giveItemTo = (charId: string, item: Item) => {
     const c = allChars.find((x) => x.id === charId)
@@ -268,9 +273,10 @@ export default function App() {
         )}
         {tab === 'dice' && <Dice history={history} setHistory={setHistory} />}
         {tab === 'campaign' && <Campaign pages={pages} setPages={setPages} />}
-        {tab === 'loot' && <Loot chests={chests} saveChest={saveChest} deleteChest={deleteChest} characters={allChars} onGiveItem={giveItemTo} onGiveCoins={giveCoinsTo} readOnly={online && !isDM} />}
+        {tab === 'loot' && <Loot chests={chests} saveChest={saveChest} deleteChest={deleteChest} characters={allChars} onGiveItem={giveItemTo} onGiveCoins={giveCoinsTo} readOnly={online && !isDM} online={online} onOpenReveal={() => setDismissedReveal(null)} />}
         {tab === 'casino' && <Casino characters={characters} adjust={adjustCoins} />}
       </main>
+      {showReveal && revealed && <RevealOverlay chest={revealed} onClose={() => setDismissedReveal(revealed.revealedAt ?? null)} />}
       {cloudOpen && (
         <CloudSheet session={session} campaigns={campaigns} activeId={active?.id ?? null} members={cloud.members}
           onSelect={(id) => setActiveId(id)} onRefresh={refreshCampaigns} onClose={() => { setCloudOpen(false); if (location.hash.includes('join=')) history_replace(tab) }}
