@@ -133,6 +133,12 @@ export function useCampaign(cid: string | null) {
     load(); return true
   }, [load])
 
+  const takeLoot = useCallback(async (chestId: string, charId: string, what: 'item' | 'pouch' | 'coins', ref: string | null, gold = 0, silver = 0): Promise<string | null> => {
+    const { error } = await supabase.rpc('take_loot', { chest_id: chestId, char_id: charId, what, ref, want_gold: gold, want_silver: silver })
+    load()
+    return error ? error.message : null
+  }, [load])
+
   // DM: push encounter (debounced)
   const t = useRef<number | undefined>(undefined)
   const pushEncounter = useCallback((e: Encounter) => {
@@ -144,5 +150,5 @@ export function useCampaign(cid: string | null) {
     }, 500)
   }, [cid])
 
-  return { chars, encounter, members, chests, saveChest, deleteChest, giveItem, status, error, setError, saveChar, deleteChar, pushEncounter, reload: load }
+  return { chars, encounter, members, chests, saveChest, deleteChest, giveItem, takeLoot, status, error, setError, saveChar, deleteChar, pushEncounter, reload: load }
 }

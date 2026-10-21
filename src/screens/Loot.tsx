@@ -98,10 +98,11 @@ export default function Loot({ chests, saveChest, deleteChest, characters, onGiv
         <div className="loot-chest">
           <div className="chest-head">
             <span className="chest-icon"><ChestArt phase={chest.revealedAt ? 'open' : 'closed'} small /></span>
-            {readOnly ? <b>{chest.name}</b> : <input className="grow" value={chest.name} onChange={(e) => saveChest({ ...chest, name: e.target.value })} />}
+            {readOnly ? <b>{chest.name}</b> : <input className="grow" style={{ minWidth: 100 }} value={chest.name} onChange={(e) => saveChest({ ...chest, name: e.target.value })} />}
             {!readOnly && online && (chest.revealedAt
               ? <button className="btn sm danger" onClick={() => saveChest({ ...chest, revealedAt: null })}>🔒 Close chest</button>
               : <button className="btn sm primary" onClick={() => saveChest({ ...chest, revealedAt: Date.now(), lastGiven: undefined })}>✨ Reveal to party</button>)}
+            {!readOnly && online && <label className="take-toggle small"><input type="checkbox" checked={chest.allowTake !== false} onChange={(e) => saveChest({ ...chest, allowTake: e.target.checked })} /> Allow players to take</label>}
             {readOnly && chest.revealedAt && <button className="btn sm primary" onClick={onOpenReveal}>👀 View</button>}
             {!readOnly && <button className="icon-btn danger" aria-label="Delete chest" onClick={() => { if (confirm(`Delete ${chest.name}?`)) deleteChest(chest.id) }}>🗑</button>}
           </div>

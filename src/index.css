@@ -380,7 +380,7 @@ h1, h2, h3, h4 { font-family: var(--serif); color: var(--gold2); letter-spacing:
 .item-picker { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .inv-msg { margin: 8px 0; padding: 8px 10px; border-radius: 10px; background: #102016; border: 1px solid #2f6b3c; font-size: 13px; }
 .loot-chest { padding: 12px; border-radius: 16px; border: 2px solid #6b4f22; background: radial-gradient(ellipse at 50% 0%, #3a2a14, #17110a 75%); box-shadow: inset 0 0 30px rgba(0,0,0,.5); }
-.chest-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.chest-head { display: flex; flex-wrap: wrap; row-gap: 6px; align-items: center; gap: 8px; margin-bottom: 10px; }
 .chest-head .chest-icon { font-size: 30px; }
 .coin-pile { display: flex; align-items: center; gap: 8px; padding: 10px; margin-top: 10px; border-radius: 12px; border: 1px dashed #b88a26; background: rgba(0,0,0,.3); touch-action: none; user-select: none; }
 .coin-pile.selected { outline: 2px solid var(--gold2, #f0d58a); }
@@ -518,3 +518,15 @@ h1, h2, h3, h4 { font-family: var(--serif); color: var(--gold2); letter-spacing:
 .chest3d.drama5.opening .chest-base-svg, .chest3d.drama5.opening .chest-lid3d svg { animation: mythic-halo .3s ease-in-out infinite alternate; }
 @keyframes mythic-halo { from { filter: drop-shadow(0 0 10px rgba(255,40,25,.8)) drop-shadow(0 0 22px rgba(255,40,25,.6)) } to { filter: drop-shadow(0 0 18px rgba(255,60,30,1)) drop-shadow(0 0 40px rgba(230,20,15,.85)) } }
 .chest3d.drama4.opening .chest-base-svg, .chest3d.drama4.opening .chest-lid3d svg { filter: drop-shadow(0 0 14px rgba(255,150,30,.8)); }
+.take-btn { margin-left: 8px; flex-shrink: 0; position: relative; z-index: 1; }
+.reveal-item small + .take-btn { margin-left: 8px; }
+.reveal-item b + .take-btn { margin-left: auto; }
+.take-backdrop { position: fixed; inset: 0; z-index: 120; background: rgba(0,0,0,.6); display: flex; align-items: flex-end; justify-content: center; }
+.take-sheet { width: 100%; max-width: 440px; padding: 18px 16px 24px; border-radius: 18px 18px 0 0; background: #1a130b; border-top: 2px solid #b88a26; display: flex; flex-direction: column; gap: 12px; animation: rise .25s ease-out; }
+.take-title { font-family: var(--serif); font-size: 20px; color: var(--gold2, #f0d58a); }
+.take-sheet label { display: flex; align-items: center; gap: 8px; }
+.take-sheet select, .take-sheet input { flex: 1; }
+.take-coins { display: flex; flex-direction: column; gap: 8px; }
+.take-err { color: #ff9a8a; font-weight: 700; }
+.take-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.take-toggle { flex-basis: 100%; order: 10; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }

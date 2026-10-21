@@ -64,7 +64,11 @@ export interface Item {
 export interface Chest { id: string; name: string; items: Item[]; gold: number; silver: number; pouches?: { id: string; gold: number; silver: number }[]; updated?: number
   /** shown to all players as a full-screen reveal while set (timestamp of the reveal) */
   revealedAt?: number | null
-  lastGiven?: { text: string; at: number } }
+  lastGiven?: { text: string; at: number }
+  /** DM toggle: players may take loot themselves from the reveal (default true) */
+  allowTake?: boolean
+  /** who took which item/pouch id (server-written) */
+  takenBy?: Record<string, string> }
 
 export interface Character extends ArmorFields {
   id: string

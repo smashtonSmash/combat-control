@@ -147,3 +147,61 @@ begin
 end $$;
 revoke all on function public.give_item(text, text, text) from public, anon;
 grant execute on function public.give_item(text, text, text) to authenticated;
+
+-- ===== Players take loot from a revealed chest (v4) =====
+-- Atomic: the chest row is locked FOR UPDATE, so two players can't take the same thing.
+-- Chest data.allowTake = false (DM toggle) disables taking. Players still cannot update chests directly (k_upd is DM-only).
+create or replace function public.take_loot(chest_id text, char_id text, what text, ref text default null, want_gold int default 0, want_silver int default 0)
+returns text language plpgsql security definer set search_path = public as
+$$ declare k chests; c characters; d jsonb; it jsonb; label text; g int := 0; s int := 0; who text;
+begin
+  if auth.uid() is null then raise exception 'Sign in first'; end if;
+  select * into k from chests where id = chest_id for update;
+  if k is null then raise exception 'Chest not found'; end if;
+  if not is_member(k.campaign_id) then raise exception 'Not in this campaign'; end if;
+  select * into c from characters where id = char_id for update;
+  if c is null or c.campaign_id <> k.campaign_id then raise exception 'Character not found'; end if;
+  if c.owner_id <> auth.uid() then raise exception 'Not your character'; end if;
+  d := k.data;
+  if coalesce((d->>'allowTake')::boolean, true) = false then raise exception 'The DM has disabled taking from this chest'; end if;
+  if d->>'revealedAt' is null then raise exception 'This chest is closed'; end if;
+  who := coalesce(nullif(c.data->>'name', ''), 'Someone');
+
+  if what = 'item' then
+    select x into it from jsonb_array_elements(coalesce(d->'items', '[]')) x where x->>'id' = ref;
+    if it is null then raise exception 'Already taken by %', coalesce(d->'takenBy'->>ref, 'someone else'); end if;
+    d := jsonb_set(d, '{items}', coalesce((select jsonb_agg(x) from jsonb_array_elements(d->'items') x where x->>'id' <> ref), '[]'));
+    it := jsonb_set(it, '{equipped}', 'false');
+    update characters set data = jsonb_set(data, '{inventory}', coalesce(data->'inventory', '[]') || jsonb_build_array(it)) where id = char_id;
+    label := it->>'name' || case when coalesce((it->>'qty')::int, 1) > 1 then ' ×' || (it->>'qty') else '' end;
+  elsif what = 'pouch' then
+    select x into it from jsonb_array_elements(coalesce(d->'pouches', '[]')) x where x->>'id' = ref;
+    if it is null then raise exception 'Already taken by %', coalesce(d->'takenBy'->>ref, 'someone else'); end if;
+    d := jsonb_set(d, '{pouches}', coalesce((select jsonb_agg(x) from jsonb_array_elements(d->'pouches') x where x->>'id' <> ref), '[]'));
+    g := coalesce((it->>'gold')::int, 0); s := coalesce((it->>'silver')::int, 0);
+    label := 'a coin pouch (' || g || 'g ' || s || 's)';
+  elsif what = 'coins' then
+    g := least(greatest(coalesce(want_gold, 0), 0), coalesce((d->>'gold')::int, 0));
+    s := least(greatest(coalesce(want_silver, 0), 0), coalesce((d->>'silver')::int, 0));
+    if g = 0 and s = 0 then
+      if coalesce((d->>'gold')::int, 0) = 0 and coalesce((d->>'silver')::int, 0) = 0 then raise exception 'Already taken by %', coalesce(d->'takenBy'->>'coins', 'someone else'); end if;
+      raise exception 'Choose an amount';
+    end if;
+    d := d || jsonb_build_object('gold', (d->>'gold')::int - g, 'silver', coalesce((d->>'silver')::int, 0) - s);
+    ref := 'coins';
+    label := g || 'g ' || s || 's';
+  else raise exception 'Unknown loot type';
+  end if;
+
+  if g > 0 or s > 0 then
+    update characters set data = jsonb_set(data, '{purse}', jsonb_build_object(
+      'gold', coalesce((data->'purse'->>'gold')::int, 0) + g, 'silver', coalesce((data->'purse'->>'silver')::int, 0) + s)) where id = char_id;
+  end if;
+  d := d || jsonb_build_object('takenBy', coalesce(d->'takenBy', '{}') || jsonb_build_object(ref, who),
+    'lastGiven', jsonb_build_object('text', who || ' took ' || label, 'at', (extract(epoch from clock_timestamp()) * 1000)::bigint),
+    'updated', (extract(epoch from clock_timestamp()) * 1000)::bigint);
+  update chests set data = d, updated_at = now() where id = chest_id;
+  return who || ' took ' || label;
+end $$;
+revoke all on function public.take_loot(text, text, text, text, int, int) from public, anon;
+grant execute on function public.take_loot(text, text, text, text, int, int) to authenticated;
