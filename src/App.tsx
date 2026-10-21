@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Character, DiceRoll, Encounter, WikiPage } from './types'
+import type { Character, Chest, DiceRoll, Encounter, Item, WikiPage } from './types'
 import { useStored } from './store'
 import { charProf, characterToCombatant, extraSamples, sampleCharacters, sampleEncounter, samplePages } from './seed'
 import Battle from './screens/Battle'
@@ -7,6 +7,8 @@ import Characters from './screens/Characters'
 import Dice from './screens/Dice'
 import Campaign from './screens/Campaign'
 import Casino from './screens/Casino'
+import Loot from './screens/Loot'
+import { addItem } from './inventory'
 import { applyDelta } from './casino/money'
 import { listCampaigns, useCampaign, useSession, type CampaignInfo } from './cloud'
 import { CloudSheet } from './components/Cloud'
@@ -21,6 +23,7 @@ const TABS = [
   { id: 'characters', label: 'Characters', icon: '🛡️' },
   { id: 'dice', label: 'Dice', icon: '🎲' },
   { id: 'campaign', label: 'Campaign', icon: '📜' },
+  { id: 'loot', label: 'Loot', icon: '💎' },
   { id: 'casino', label: 'Casino', icon: '🎰' },
 ] as const
 type Tab = (typeof TABS)[number]['id']
@@ -191,6 +194,28 @@ export default function App() {
     saveCharacter(next)
     return true
   }
+  // ---- loot / inventory ----
+  const [localChests, setLocalChests] = useStored<Chest[]>('chests', () => [])
+  const chests = online ? cloud.chests : localChests
+  const saveChest = (k: Chest) => (online ? cloud.saveChest(k) : setLocalChests((ks) => (ks.some((x) => x.id === k.id) ? ks.map((x) => (x.id === k.id ? k : x)) : [...ks, k])))
+  const deleteChest = (id: string) => (online ? cloud.deleteChest(id) : setLocalChests((ks) => ks.filter((x) => x.id !== id)))
+  const allChars: Character[] = online ? cloud.chars.map((r) => r.data) : localChars
+  const giveItemTo = (charId: string, item: Item) => {
+    const c = allChars.find((x) => x.id === charId)
+    if (c) saveCharacter(addItem(c, item))
+  }
+  const giveCoinsTo = (charId: string, gold: number, silver: number) => {
+    const c = allChars.find((x) => x.id === charId)
+    if (c) saveCharacter({ ...c, purse: { gold: (c.purse?.gold ?? 0) + gold, silver: (c.purse?.silver ?? 0) + silver } })
+  }
+  const giveBetween = async (from: Character, toId: string, itemId: string) => {
+    const item = (from.inventory ?? []).find((i) => i.id === itemId)
+    if (!item) return false
+    if (online) { await cloud.saveChar(from); return cloud.giveItem(from.id, toId, itemId) }
+    giveItemTo(toId, { ...item, equipped: false })
+    return true
+  }
+
   const deleteCharacter = (id: string) => (online ? cloud.deleteChar(id) : setCharacters((cs) => cs.filter((c) => c.id !== id)))
 
   return (
@@ -214,12 +239,13 @@ export default function App() {
         {tab === 'battle' && <Battle encounter={encounter} setEncounter={setEnc} characters={characters} />}
         {tab === 'characters' && (
           <>
-            <Characters characters={characters} onSave={saveCharacter} onDelete={deleteCharacter} />
+            <Characters characters={characters} onSave={saveCharacter} onDelete={deleteCharacter} giveTargets={allChars.map((c) => ({ id: c.id, name: c.name }))} onGive={giveBetween} />
             {hasSamples && <div className="center pad"><button className="btn ghost danger" onClick={removeSamples}>Remove all sample data</button></div>}
           </>
         )}
         {tab === 'dice' && <Dice history={history} setHistory={setHistory} />}
         {tab === 'campaign' && <Campaign pages={pages} setPages={setPages} />}
+        {tab === 'loot' && <Loot chests={chests} saveChest={saveChest} deleteChest={deleteChest} characters={allChars} onGiveItem={giveItemTo} onGiveCoins={giveCoinsTo} readOnly={online && !isDM} />}
         {tab === 'casino' && <Casino characters={characters} adjust={adjustCoins} />}
       </main>
       {cloudOpen && (

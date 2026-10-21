@@ -107,3 +107,43 @@ do $$ begin
   begin alter publication supabase_realtime add table public.encounters; exception when duplicate_object then null; end;
   begin alter publication supabase_realtime add table public.members; exception when duplicate_object then null; end;
 end $$;
+
+-- ===== Loot chests + item giving (v3) =====
+create table if not exists public.chests (
+  id text primary key,
+  campaign_id uuid not null references public.campaigns on delete cascade,
+  data jsonb not null,
+  updated_at timestamptz not null default now()
+);
+create index if not exists chests_campaign on public.chests (campaign_id);
+alter table public.chests replica identity full;
+alter table public.chests enable row level security;
+drop policy if exists k_sel on public.chests; create policy k_sel on public.chests for select to authenticated using (is_member(campaign_id));
+drop policy if exists k_ins on public.chests; create policy k_ins on public.chests for insert to authenticated with check (is_dm(campaign_id));
+drop policy if exists k_upd on public.chests; create policy k_upd on public.chests for update to authenticated using (is_dm(campaign_id)) with check (is_dm(campaign_id));
+drop policy if exists k_del on public.chests; create policy k_del on public.chests for delete to authenticated using (is_dm(campaign_id));
+do $$ begin
+  begin alter publication supabase_realtime add table public.chests; exception when duplicate_object then null; end;
+end $$;
+
+-- A player gives one of their items to another character in the same campaign.
+create or replace function public.give_item(from_id text, to_id text, item_id text) returns void
+language plpgsql security definer set search_path = public as
+$$ declare f characters; t characters; it jsonb;
+begin
+  select * into f from characters where id = from_id for update;
+  select * into t from characters where id = to_id for update;
+  if f is null or t is null then raise exception 'Character not found'; end if;
+  if f.campaign_id <> t.campaign_id then raise exception 'Characters are in different campaigns'; end if;
+  if not (f.owner_id = auth.uid() or is_dm(f.campaign_id)) then raise exception 'Not your character'; end if;
+  select x into it from jsonb_array_elements(coalesce(f.data->'inventory', '[]')) x where x->>'id' = item_id;
+  if it is null then raise exception 'Item not found'; end if;
+  it := it - 'equipped';
+  update characters set data = jsonb_set(data, '{inventory}',
+    coalesce((select jsonb_agg(x) from jsonb_array_elements(data->'inventory') x where x->>'id' <> item_id), '[]'))
+    where id = from_id;
+  update characters set data = jsonb_set(data, '{inventory}', coalesce(data->'inventory', '[]') || jsonb_build_array(it))
+    where id = to_id;
+end $$;
+revoke all on function public.give_item(text, text, text) from public, anon;
+grant execute on function public.give_item(text, text, text) to authenticated;

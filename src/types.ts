@@ -35,6 +35,26 @@ export interface Abilities { str: number; dex: number; con: number; int: number;
 
 export interface Purse { gold: number; silver: number }
 
+export type ItemKind = 'armor' | 'weapon' | 'consumable' | 'misc'
+export interface Item {
+  id: string
+  name: string
+  kind: ItemKind
+  qty: number
+  description: string
+  equipped?: boolean
+  // armor
+  armorId?: string
+  tier?: import('./armor').Tier
+  // weapon
+  damage?: string
+  damageType?: DamageType
+  // consumable: dice healed on use, e.g. 2d4+2
+  heal?: string
+}
+
+export interface Chest { id: string; name: string; items: Item[]; gold: number; silver: number; updated?: number }
+
 export interface Character extends ArmorFields {
   id: string
   name: string
@@ -57,6 +77,7 @@ export interface Character extends ArmorFields {
   purse?: Purse
   /** current HP (synced with the DM's battle when playing online) */
   currentHp?: number
+  inventory?: Item[]
 }
 
 export type Side = 'party' | 'monster'

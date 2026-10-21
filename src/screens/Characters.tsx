@@ -8,6 +8,8 @@ import { AttackEditor, TraitEditor } from '../components/Editors'
 import type { Tier } from '../armor'
 import { ARMOR_CATALOG, TIERS, TIER_COLORS, TIER_LABELS, TIER_SHORT, armorAc, armorById, armorLabel, canBeUnderLayer, combinedArmor, profFromLevel } from '../armor'
 import { charProf } from '../seed'
+import { ItemCard, ItemPicker } from '../components/Items'
+import { addItem, equip, removeItem, unequip, useItem } from '../inventory'
 
 const blank = (): Character => ({
   id: uid(), name: '', cls: '', level: 1, race: '',
@@ -15,8 +17,11 @@ const blank = (): Character => ({
   ac: 10, armor: '', maxHp: 10, initMod: 0, traits: [], attacks: [], notes: '',
 })
 
-export default function Characters({ characters, onSave, onDelete }: {
+export type GiveFn = (from: Character, toId: string, itemId: string) => Promise<boolean> | boolean
+
+export default function Characters({ characters, onSave, onDelete, giveTargets = [], onGive }: {
   characters: Character[]; onSave: (c: Character) => void; onDelete: (id: string) => void
+  giveTargets?: { id: string; name: string }[]; onGive?: GiveFn
 }) {
   const [edit, setEdit] = useState<Character | null>(null)
   return (
@@ -35,6 +40,7 @@ export default function Characters({ characters, onSave, onDelete }: {
               <b className="char-name">{c.name || 'Unnamed'}</b>
               <div className="muted small">{[c.race, c.cls, c.level && `Lv ${c.level}`].filter(Boolean).join(' · ')}</div>
               {c.armorTier && <TierBadge tier={c.armorTier} />}
+              {(c.inventory ?? []).some((i) => i.equipped) && <div className="small">⚔️ {(c.inventory ?? []).filter((i) => i.equipped).map((i) => i.name).join(', ')}</div>}
               <div className="small">🛡 {c.armor || '—'} · ❤️ {c.currentHp ?? c.maxHp}/{c.maxHp} · ⚡ Init {fmtMod(c.initMod)}</div>
               {c.traits.length > 0 && (
                 <div className="badges">
@@ -47,7 +53,8 @@ export default function Characters({ characters, onSave, onDelete }: {
       </div>
       {edit && (
         <CharacterSheet c={edit} isNew={!characters.some((x) => x.id === edit.id)} onClose={() => setEdit(null)}
-          onSave={(c) => { onSave(c); setEdit(null) }}
+          onSave={(c) => { onSave(c); setEdit(null) }} onPersist={onSave}
+          giveTargets={giveTargets.filter((t) => t.id !== edit.id)} onGive={onGive}
           onDelete={() => { if (confirm(`Delete ${edit.name || 'this character'}?`)) { onDelete(edit.id); setEdit(null) } }} />
       )}
     </div>
@@ -56,8 +63,9 @@ export default function Characters({ characters, onSave, onDelete }: {
 
 const ABILS: (keyof Abilities)[] = ['str', 'dex', 'con', 'int', 'wis', 'cha']
 
-function CharacterSheet({ c, isNew, onClose, onSave, onDelete }: {
+function CharacterSheet({ c, isNew, onClose, onSave, onDelete, onPersist, giveTargets, onGive }: {
   c: Character; isNew: boolean; onClose: () => void; onSave: (c: Character) => void; onDelete: () => void
+  onPersist: (c: Character) => void; giveTargets: { id: string; name: string }[]; onGive?: GiveFn
 }) {
   const [d, setD] = useState(c)
   const recalc = (n: Character): Character => {
@@ -104,6 +112,8 @@ function CharacterSheet({ c, isNew, onClose, onSave, onDelete }: {
       <TraitEditor traits={d.traits} onChange={(t) => set({ traits: t })} />
       <div className="mini-label">Attacks</div>
       <AttackEditor attacks={d.attacks} onChange={(a) => set({ attacks: a })} />
+      <div className="mini-label">🎒 Inventory</div>
+      <Inventory d={d} commit={(n) => { setD(n); if (!isNew && n.name.trim()) onPersist(n) }} giveTargets={isNew ? [] : giveTargets} onGive={onGive} />
       <label className="field"><span>Notes</span>
         <textarea rows={6} value={d.notes} onChange={(e) => set({ notes: e.target.value })} placeholder="Backstory, spells, inventory, reminders…" /></label>
       {!isNew && <button className="btn ghost danger" onClick={onDelete}>🗑 Delete character</button>}
@@ -197,6 +207,58 @@ function CoinPurse({ d, set }: { d: Character; set: (p: Partial<Character>) => v
       </div>
       {msg && <div className="small">{msg}</div>}
       <div className="small muted">1 gold = 10 silver. 🪙 Merchants value gold slightly higher when haggling.</div>
+    </div>
+  )
+}
+
+function Inventory({ d, commit, giveTargets, onGive }: {
+  d: Character; commit: (c: Character) => void; giveTargets: { id: string; name: string }[]; onGive?: GiveFn
+}) {
+  const inv = d.inventory ?? []
+  const [sel, setSel] = useState<string | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [giving, setGiving] = useState(false)
+  const [msg, setMsg] = useState('')
+  const it = inv.find((x) => x.id === sel)
+  const close = () => { setSel(null); setGiving(false) }
+  return (
+    <div className="panel">
+      {inv.length === 0 && <div className="small muted">Empty pack. Add items below, or the DM can drop loot to you.</div>}
+      <div className="item-grid">
+        {[...inv].sort((a, b) => Number(!!b.equipped) - Number(!!a.equipped)).map((x) => (
+          <ItemCard key={x.id} it={x} selected={x.id === sel} onClick={() => { setSel(x.id === sel ? null : x.id); setGiving(false); setMsg('') }} />
+        ))}
+      </div>
+      {msg && <div className="inv-msg">{msg}</div>}
+      {it && (
+        <div className="item-actions panel">
+          <b>{it.name}</b>{it.qty > 1 && <span className="muted"> ×{it.qty}</span>}
+          {it.description && <div className="small muted">{it.description}</div>}
+          <div className="row">
+            {(it.kind === 'armor' || it.kind === 'weapon') && (it.equipped
+              ? <button className="btn sm" onClick={() => { commit(unequip(d, it.id)); setMsg(`Unequipped ${it.name}.`) }}>Unequip</button>
+              : <button className="btn sm primary" onClick={() => { commit(equip(d, it.id)); setMsg(it.kind === 'armor' ? `Equipped ${it.name} — AC and armor effects updated.` : `Equipped ${it.name} — added to attacks.`) }}>Equip</button>)}
+            {it.kind === 'consumable' && <button className="btn sm primary" onClick={() => { const r = useItem(d, it.id); commit(r.char); setMsg(r.message); if (it.qty <= 1) setSel(null) }}>Use</button>}
+            {onGive && giveTargets.length > 0 && <button className="btn sm" onClick={() => setGiving(!giving)}>Give…</button>}
+            <button className="btn sm danger" onClick={() => { if (confirm(`Drop ${it.name}${it.qty > 1 ? ` (all ${it.qty})` : ''}?`)) { commit(removeItem(d, it.id)); setMsg(`Dropped ${it.name}.`); close() } }}>Drop</button>
+          </div>
+          {giving && (
+            <div className="chips-row wrap">
+              {giveTargets.map((t) => (
+                <button key={t.id} className="chip" onClick={async () => {
+                  const from = it.equipped ? unequip(d, it.id) : d
+                  if (from !== d) commit(from)
+                  const ok = await onGive!(from, t.id, it.id)
+                  if (ok) { setD_after(from) } else setMsg('Could not give that item.')
+                  function setD_after(f: Character) { commit(removeItem(f, it!.id)); setMsg(`Gave ${it!.name} to ${t.name}.`); close() }
+                }}>→ {t.name}</button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      <button className="btn ghost sm" onClick={() => setAdding(!adding)}>{adding ? 'Done adding' : '+ Add item'}</button>
+      {adding && <ItemPicker onAdd={(x) => { commit(addItem(d, x)); setMsg(`Added ${x.name}.`) }} />}
     </div>
   )
 }

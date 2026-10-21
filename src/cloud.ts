@@ -1,7 +1,7 @@
 import { createClient, type Session } from '@supabase/supabase-js'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from './supabaseConfig'
-import type { Character, Encounter } from './types'
+import type { Character, Chest, Encounter } from './types'
 import { migrateTiers } from './armor'
 const normEnc = (e: Encounter | null) => (e ? { ...e, combatants: (e.combatants ?? []).map(migrateTiers) } : e)
 
@@ -53,24 +53,27 @@ export function useCampaign(cid: string | null) {
   const [chars, setChars] = useState<CloudChar[]>([])
   const [encounter, setEnc] = useState<Encounter | null>(null)
   const [members, setMembers] = useState<MemberInfo[]>([])
+  const [chests, setChests] = useState<Chest[]>([])
   const [status, setStatus] = useState<'off' | 'loading' | 'live' | 'error'>('off')
   const [error, setError] = useState('')
 
   const load = useCallback(async () => {
     if (!cid) return
-    const [c, e, m] = await Promise.all([
+    const [c, e, m, k] = await Promise.all([
       supabase.from('characters').select('id, owner_id, data').eq('campaign_id', cid),
       supabase.from('encounters').select('data').eq('campaign_id', cid).maybeSingle(),
       supabase.from('members').select('user_id, role, display_name').eq('campaign_id', cid),
+      supabase.from('chests').select('id, data').eq('campaign_id', cid),
     ])
     if (c.error) { setStatus('error'); setError(c.error.message); return }
     setChars((c.data ?? []).map((r) => ({ ...r, data: migrateTiers({ ...(r.data as Character), id: r.id }) })))
     setEnc(normEnc((e.data?.data as Encounter) ?? null))
     setMembers((m.data ?? []) as MemberInfo[])
+    setChests((k.data ?? []).map((r) => ({ ...(r.data as Chest), id: r.id })))
   }, [cid])
 
   useEffect(() => {
-    if (!cid) { setChars([]); setEnc(null); setMembers([]); setStatus('off'); return }
+    if (!cid) { setChars([]); setEnc(null); setMembers([]); setChests([]); setStatus('off'); return }
     setStatus('loading')
     load()
     const ch = supabase.channel('campaign-' + cid)
@@ -82,6 +85,12 @@ export function useCampaign(cid: string | null) {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'encounters', filter: `campaign_id=eq.${cid}` }, (p) => {
         if (p.eventType !== 'DELETE') setEnc(normEnc((p.new as { data: Encounter }).data))
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'chests', filter: `campaign_id=eq.${cid}` }, (p) => {
+        if (p.eventType === 'DELETE') { const id = (p.old as { id: string }).id; setChests((ks) => ks.filter((x) => x.id !== id)); return }
+        const r = p.new as { id: string; data: Chest }
+        const row = { ...r.data, id: r.id }
+        setChests((ks) => (ks.some((x) => x.id === r.id) ? ks.map((x) => (x.id === r.id ? row : x)) : [...ks, row]))
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'members', filter: `campaign_id=eq.${cid}` }, () => { load() })
       .subscribe((s) => { if (s === 'SUBSCRIBED') { setStatus('live'); load() } else if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT') setStatus('error') })
@@ -107,6 +116,23 @@ export function useCampaign(cid: string | null) {
     if (error) { setError(error.message); load() }
   }, [load])
 
+  const saveChest = useCallback(async (k: Chest) => {
+    if (!cid) return
+    setChests((ks) => (ks.some((x) => x.id === k.id) ? ks.map((x) => (x.id === k.id ? k : x)) : [...ks, k]))
+    const { error } = await supabase.from('chests').upsert({ id: k.id, campaign_id: cid, data: k, updated_at: new Date().toISOString() })
+    if (error) { setError(error.message); load() }
+  }, [cid, load])
+  const deleteChest = useCallback(async (id: string) => {
+    setChests((ks) => ks.filter((x) => x.id !== id))
+    const { error } = await supabase.from('chests').delete().eq('id', id)
+    if (error) { setError(error.message); load() }
+  }, [load])
+  const giveItem = useCallback(async (fromId: string, toId: string, itemId: string) => {
+    const { error } = await supabase.rpc('give_item', { from_id: fromId, to_id: toId, item_id: itemId })
+    if (error) { setError(error.message); return false }
+    load(); return true
+  }, [load])
+
   // DM: push encounter (debounced)
   const t = useRef<number | undefined>(undefined)
   const pushEncounter = useCallback((e: Encounter) => {
@@ -118,5 +144,5 @@ export function useCampaign(cid: string | null) {
     }, 500)
   }, [cid])
 
-  return { chars, encounter, members, status, error, setError, saveChar, deleteChar, pushEncounter, reload: load }
+  return { chars, encounter, members, chests, saveChest, deleteChest, giveItem, status, error, setError, saveChar, deleteChar, pushEncounter, reload: load }
 }

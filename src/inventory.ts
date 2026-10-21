@@ -1,0 +1,91 @@
+import type { Character, DamageType, Item } from './types'
+import { uid } from './types'
+import { TIER_SHORT, armorAc, armorById, armorLabel, type Tier } from './armor'
+import { abilityMod, rollExpression } from './dice'
+import { charProf } from './seed'
+
+export const KIND_ICON: Record<Item['kind'], string> = { armor: '🛡', weapon: '⚔️', consumable: '🧪', misc: '📦' }
+
+export const potionOfHealing = (): Item => ({ id: uid(), name: 'Potion of Healing', kind: 'consumable', qty: 1, heal: '2d4+2', description: 'Drink to regain 2d4+2 HP.' })
+export const armorItem = (armorId: string, tier: Tier): Item => {
+  const a = armorById(armorId)!
+  return { id: uid(), name: `${TIER_SHORT[tier]} ${a.name} Armor`, kind: 'armor', qty: 1, armorId, tier, description: `${a.category} armor · ${a.focus}` }
+}
+export const COMMON_WEAPONS: { name: string; damage: string; damageType: DamageType }[] = [
+  { name: 'Dagger', damage: '1d4', damageType: 'piercing' },
+  { name: 'Shortsword', damage: '1d6', damageType: 'piercing' },
+  { name: 'Rapier', damage: '1d8', damageType: 'piercing' },
+  { name: 'Longsword', damage: '1d8', damageType: 'slashing' },
+  { name: 'Handaxe', damage: '1d6', damageType: 'slashing' },
+  { name: 'Greataxe', damage: '1d12', damageType: 'slashing' },
+  { name: 'Mace', damage: '1d6', damageType: 'bludgeoning' },
+  { name: 'Warhammer', damage: '1d8', damageType: 'bludgeoning' },
+  { name: 'Shortbow', damage: '1d6', damageType: 'piercing' },
+  { name: 'Longbow', damage: '1d8', damageType: 'piercing' },
+]
+export const weaponItem = (w: (typeof COMMON_WEAPONS)[number]): Item => ({ id: uid(), name: w.name, kind: 'weapon', qty: 1, damage: w.damage, damageType: w.damageType, description: `${w.damage} ${w.damageType}` })
+
+/** Re-derive armor label + AC (unless AC is manual). */
+export function recalcArmor(c: Character): Character {
+  const ac = armorAc(c, abilityMod(c.abilities.dex))
+  return { ...c, tierV: 2, ...(ac !== null && !c.acManual ? { ac } : {}), ...(c.armorId ? { armor: armorLabel(c) } : {}) }
+}
+
+const weaponAttackId = (it: Item) => 'item-' + it.id
+
+export function equip(c: Character, itemId: string): Character {
+  const inv = c.inventory ?? []
+  const it = inv.find((x) => x.id === itemId)
+  if (!it) return c
+  if (it.kind === 'armor') {
+    // one armor at a time
+    const next = { ...c, armorId: it.armorId, armorTier: it.tier, inventory: inv.map((x) => (x.kind === 'armor' ? { ...x, equipped: x.id === itemId } : x)) }
+    return recalcArmor(next)
+  }
+  if (it.kind === 'weapon') {
+    const mod = Math.max(abilityMod(c.abilities.str), abilityMod(c.abilities.dex))
+    const atk = { id: weaponAttackId(it), name: it.name, toHit: charProf(c) + mod, damage: `${it.damage ?? '1d4'}${mod ? (mod > 0 ? '+' : '') + mod : ''}`, damageType: it.damageType ?? 'bludgeoning' as DamageType }
+    return { ...c, attacks: [...c.attacks.filter((a) => a.id !== atk.id), atk], inventory: inv.map((x) => (x.id === itemId ? { ...x, equipped: true } : x)) }
+  }
+  return c
+}
+
+export function unequip(c: Character, itemId: string): Character {
+  const inv = c.inventory ?? []
+  const it = inv.find((x) => x.id === itemId)
+  if (!it) return c
+  const base = { ...c, inventory: inv.map((x) => (x.id === itemId ? { ...x, equipped: false } : x)) }
+  if (it.kind === 'armor') return { ...base, armorId: undefined, armorTier: undefined, armor: 'No armor', ...(c.acManual ? {} : { ac: 10 + abilityMod(c.abilities.dex) }) }
+  if (it.kind === 'weapon') return { ...base, attacks: c.attacks.filter((a) => a.id !== weaponAttackId(it)) }
+  return base
+}
+
+export function removeItem(c: Character, itemId: string, qty = Infinity): Character {
+  const it = (c.inventory ?? []).find((x) => x.id === itemId)
+  if (!it) return c
+  const cc = it.equipped ? unequip(c, itemId) : c
+  const inv = (cc.inventory ?? []).flatMap((x) => (x.id !== itemId ? [x] : x.qty - qty > 0 ? [{ ...x, qty: x.qty - qty }] : []))
+  return { ...cc, inventory: inv }
+}
+
+export function addItem(c: Character, item: Item): Character {
+  const inv = c.inventory ?? []
+  // stack identical unequipped consumables/misc
+  const same = (item.kind === 'consumable' || item.kind === 'misc') && inv.find((x) => x.kind === item.kind && x.name === item.name && x.heal === item.heal)
+  if (same) return { ...c, inventory: inv.map((x) => (x === same ? { ...x, qty: x.qty + item.qty } : x)) }
+  return { ...c, inventory: [...inv, { ...item, equipped: false }] }
+}
+
+export function useItem(c: Character, itemId: string): { char: Character; message: string } {
+  const it = (c.inventory ?? []).find((x) => x.id === itemId)
+  if (!it) return { char: c, message: '' }
+  let char = removeItem(c, itemId, 1)
+  if (it.heal) {
+    const r = rollExpression(it.heal)
+    const cur = c.currentHp ?? c.maxHp
+    const hp = Math.min(c.maxHp, cur + Math.max(0, r.total))
+    char = { ...char, currentHp: hp }
+    return { char, message: `${c.name} drinks ${it.name}: ${r.detail || r.total} → heals ${r.total} (HP ${cur}→${hp})` }
+  }
+  return { char, message: `${c.name} used ${it.name}.` }
+}
