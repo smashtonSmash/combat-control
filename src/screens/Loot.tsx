@@ -7,10 +7,12 @@ import { ItemCard, ItemPicker } from '../components/Items'
 import { Sheet, Stepper } from '../components/Sheet'
 import { fmtCoins, purseTotal } from '../casino/money'
 import { coinsToSilver, splitEvenly, takeFrom } from '../loot'
+import { LOOT_TABLES, rollLoot, tableById } from '../lootTables'
+import type { RecapKind } from '../recap'
 
 type Payload = { kind: 'item'; id: string } | { kind: 'pouch'; id: string }
 
-export default function Loot({ chests, saveChest, deleteChest, characters, onGiveItem, onGiveCoins, readOnly, online, onOpenReveal, onSaveChar }: {
+export default function Loot({ chests, saveChest, deleteChest, characters, onGiveItem, onGiveCoins, readOnly, online, onOpenReveal, onSaveChar, pendingLoot = [], onPendingLoot, onRecap }: {
   chests: Chest[]; saveChest: (k: Chest) => void; deleteChest: (id: string) => void
   characters: Character[]
   onGiveItem: (charId: string, item: Item) => void
@@ -19,6 +21,9 @@ export default function Loot({ chests, saveChest, deleteChest, characters, onGiv
   onSaveChar?: (c: Character) => void
   online?: boolean
   onOpenReveal?: () => void
+  pendingLoot?: Item[]
+  onPendingLoot?: (items: Item[]) => void
+  onRecap?: (kind: RecapKind, text: string) => void
 }) {
   const [openId, setOpenId] = useState<string | null>(() => localStorage.getItem('dnd.lootChest'))
   useEffect(() => { if (openId) localStorage.setItem('dnd.lootChest', openId) }, [openId])
@@ -28,6 +33,7 @@ export default function Loot({ chests, saveChest, deleteChest, characters, onGiv
   const [pouchOpen, setPouchOpen] = useState(false)
   const [splitOpen, setSplitOpen] = useState(false)
   const [msg, setMsg] = useState('')
+  const [tableId, setTableId] = useState(LOOT_TABLES[0].id)
 
   // ---- drag (same pointer-event style as Battle) ----
   const drag = useRef<{ p: Payload; x0: number; y0: number; active: boolean } | null>(null)
@@ -181,7 +187,36 @@ export default function Loot({ chests, saveChest, deleteChest, characters, onGiv
           setSplitOpen(false)
         }} />
       )}
-      {!readOnly && onSaveChar && <ShopForge characters={characters} onSave={onSaveChar} />}
+      {!readOnly && pendingLoot.length > 0 && (
+        <div className="panel">
+          <div className="row between"><b>Battle drops</b><button className="link small" onClick={() => onPendingLoot?.([])}>Clear</button></div>
+          <div className="small muted">Rolled when a monster with a loot table hit 0 HP. Not every kill drops something.</div>
+          {pendingLoot.map((it) => (
+            <div key={it.id} className="fuse-row"><span>{it.name}</span>
+              {chest && <button className="btn sm" onClick={() => { saveChest({ ...chest, items: [...chest.items, it], updated: Date.now() }); onPendingLoot?.(pendingLoot.filter((x) => x.id !== it.id)) }}>Into {chest.name}</button>}
+            </div>
+          ))}
+        </div>
+      )}
+      {!readOnly && (
+        <div className="panel">
+          <b>Loot tables</b>
+          <div className="small muted">PLACEHOLDER odds. Easier rows are mostly Common. Harder rows are where Legendary shows up.</div>
+          <div className="chips-row wrap">{LOOT_TABLES.map((t) => (
+            <button key={t.id} className={'chip ' + (tableId === t.id ? 'on' : '')} onClick={() => setTableId(t.id)}>{t.name} <small>{t.kind} · {Math.round(t.gearChance * 100)}%</small></button>
+          ))}</div>
+          <button className="btn sm" disabled={!chest} onClick={() => {
+            const table = tableById(tableId)
+            if (!table || !chest) return
+            const found = rollLoot(table)
+            if (!found.length) { setMsg(`${table.name}: nothing this time.`); onRecap?.('drop', `${table.name}: nothing this time.`); return }
+            saveChest({ ...chest, items: [...chest.items, ...found], updated: Date.now() })
+            const text = `${table.name}: ${found.map((i) => i.name).join(', ')}.`
+            setMsg(text); onRecap?.('drop', text)
+          }}>Roll into {chest?.name ?? 'a chest'}</button>
+        </div>
+      )}
+      {!readOnly && onSaveChar && <ShopForge characters={characters} onSave={onSaveChar} onRecap={onRecap} />}
     </div>
   )
 }

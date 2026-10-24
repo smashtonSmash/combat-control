@@ -1,9 +1,13 @@
 import { DurBar } from '../components/DurBar'
 import { durOf, equippedArmor, isDamaged, maxDur, wearFor } from '../durability'
-import { applySecondWind, applyWear, undoWear, clearEffects, effectOf, equippedWeapon, hasEffect } from '../effects'
+import { applySecondWind, applyWear, applyWeaponWear, undoWear, clearEffects, effectOf, equippedWeapon, hasEffect } from '../effects'
+import { findSwungWeapon } from '../weapons'
+import { WEAPON_MISS_WEAR } from '../catalog'
+import { rollLoot, tableForMonster } from '../lootTables'
+import type { RecapKind } from '../recap'
 import { Portrait } from '../components/Portrait'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Attack, Character, Combatant, DamageType, Encounter, LogEntry, Side, Trait } from '../types'
+import type { Attack, Character, Combatant, DamageType, Encounter, Item, LogEntry, Side, Trait } from '../types'
 import { CONDITIONS, DAMAGE_ICONS, DAMAGE_TYPES, uid } from '../types'
 import { computeDamage, isOut, matchingTraits, sortedOrder, traitSentence } from '../combat'
 import { fmtMod, rollDie, rollExpression } from '../dice'
@@ -11,18 +15,19 @@ import { characterToCombatant } from '../seed'
 import { NumField, Segmented, Sheet, Stepper, TextField } from '../components/Sheet'
 import { DamageTypePicker, TraitEditor } from '../components/Editors'
 import { TIER_COLORS, TIER_SHORT, combinedArmor } from '../armor'
+import { spellToHitBonus } from '../accessories'
 import { availableSlots, damageFor, scrollStats, spellMod } from '../spells'
 import { effectiveSlots } from '../components/Spells'
 import { charProf } from '../seed'
 
 type SetEnc = (f: (e: Encounter) => Encounter) => void
 
-interface Props { encounter: Encounter; setEncounter: SetEnc; characters: Character[]; onSpendSlot?: (charId: string, level: number) => void; onUseScroll?: (charId: string, itemId: string) => void; onRest?: (kind: 'long' | 'short') => void; portraits?: Record<string, string | undefined>; onUpdateChar?: (c: Character) => void }
+interface Props { encounter: Encounter; setEncounter: SetEnc; characters: Character[]; onSpendSlot?: (charId: string, level: number) => void; onUseScroll?: (charId: string, itemId: string) => void; onRest?: (kind: 'long' | 'short') => void; portraits?: Record<string, string | undefined>; onUpdateChar?: (c: Character) => void; onRecap?: (kind: RecapKind, text: string) => void; onDrops?: (items: Item[], source: string) => void }
 
 const log = (e: Encounter, text: string, kind: LogEntry['kind']): LogEntry[] =>
   [{ id: uid(), round: e.round, text, kind, time: Date.now() }, ...e.log].slice(0, 200)
 
-export default function Battle({ encounter, setEncounter, characters, onSpendSlot, onUseScroll, onRest, portraits = {}, onUpdateChar }: Props) {
+export default function Battle({ encounter, setEncounter, characters, onSpendSlot, onUseScroll, onRest, portraits = {}, onUpdateChar, onRecap, onDrops }: Props) {
   const charOf = (cb?: Combatant) => (cb?.characterId ? characters.find((x) => x.id === cb.characterId) : undefined)
   const { combatants, round, turnId } = encounter
   const party = combatants.filter((c) => c.side === 'party')
@@ -32,7 +37,7 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
   const [selected, setSelected] = useState<string | null>(null)
   const [attack, setAttack] = useState<{ a: string; t: string } | null>(null)
   const [hpFor, setHpFor] = useState<string | null>(null)
-  const [lastWear, setLastWear] = useState<{ charId: string; itemId: string; prev: number; text: string } | null>(null)
+  const [lastWear, setLastWear] = useState<{ kind: 'armor' | 'weapon'; charId: string; itemId: string; prev: number; text: string } | null>(null)
   useEffect(() => { if (!lastWear) return; const t = setTimeout(() => setLastWear(null), 12000); return () => clearTimeout(t) }, [lastWear])
   const [editFor, setEditFor] = useState<string | null>(null)
   const [addSide, setAddSide] = useState<Side | null>(null)
@@ -156,6 +161,7 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
 
   const applyAttack = (res: AttackResult) => {
     const a = byId(res.attackerId)!, t = byId(res.targetId)!
+    let pendingDrops: Item[] = []
     setEncounter((e) => {
       let entries = e.log
       let cs = e.combatants
@@ -178,7 +184,17 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
         cs = cs.map((c) => (c.id === t.id ? { ...c, hp: newHp, shrugUsed: c.shrugUsed || !!res.shrug } : c))
         const extra = res.steps.length ? ` [${res.steps.join('; ')}]` : ''
         push(`${a.name} → ${t.name}: ${res.weapon || 'attack'} ${res.crit ? 'CRITS' : 'hits'} for ${res.final} ${res.type}${extra}${res.rollText ? ` (${res.rollText})` : ''}. HP ${t.hp}→${newHp}`, 'hit')
-        if (newHp === 0 && t.hp > 0) push(t.side === 'party' ? `${t.name} is DOWN! Start death saves.` : `${t.name} is defeated!`, 'down')
+        if (newHp === 0 && t.hp > 0) {
+          push(t.side === 'party' ? `${t.name} is DOWN! Start death saves.` : `${t.name} is defeated!`, 'down')
+          if (t.side === 'monster') {
+            const table = tableForMonster(t.name)
+            if (table) {
+              const found = rollLoot(table)
+              pendingDrops = found
+              push(found.length ? `🎲 ${t.name} drops ${found.map((i) => i.name).join(', ')}.` : `🎲 ${t.name} drops nothing.`, 'info')
+            }
+          }
+        }
       }
       return { ...e, combatants: cs, log: entries }
     })
@@ -187,10 +203,26 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
       if (ch) {
         const w = applyWear(ch, res.wear.amount)
         if (w.itemId) {
-          onUpdateChar?.(w.char); setLastWear({ charId: ch.id, itemId: w.itemId, prev: w.prev!, text: `${ch.name}: armor −${res.wear.amount} (${res.wear.reason})` })
+          onUpdateChar?.(w.char); setLastWear({ kind: 'armor', charId: ch.id, itemId: w.itemId, prev: w.prev!, text: `${ch.name}: armor −${res.wear.amount} (${res.wear.reason})` })
           setEncounter((e) => ({ ...e, log: log(e, `🛡 ${w.message} (−${res.wear!.amount}, ${res.wear!.reason})`, 'info') }))
+          if (w.message.includes('BROKEN')) onRecap?.('broken', `${ch.name}: ${w.message}`)
         }
       }
+    }
+    if (!res.hit && !res.heal && !res.grant && res.weaponWear?.amount && res.weaponWear.itemId) {
+      const ch = charOf(a)
+      if (ch) {
+        const w = applyWeaponWear(ch, res.weaponWear.itemId, 'miss')
+        if (w.itemId) {
+          onUpdateChar?.(w.char); setLastWear({ kind: 'weapon', charId: ch.id, itemId: w.itemId, prev: w.prev!, text: `${ch.name}: weapon −${w.amount} (miss)` })
+          setEncounter((e) => ({ ...e, log: log(e, `⚔️ ${w.message}`, 'info') }))
+          if (w.message.includes('BROKEN')) onRecap?.('broken', `${ch.name}: ${w.message}`)
+        }
+      }
+    }
+    if (pendingDrops.length) {
+      onDrops?.(pendingDrops, t.name)
+      onRecap?.('drop', `${t.name} dropped ${pendingDrops.map((i) => i.name).join(', ')}.`)
     }
     if (res.whetstone) { const ch = charOf(a); if (ch) onUpdateChar?.({ ...ch, effects: (ch.effects ?? []).filter((x) => x.kind !== 'whetstone') }) }
     if (res.spell && res.spell.slotLevel > 0) onSpendSlot?.(res.spell.charId, res.spell.slotLevel)
@@ -280,8 +312,8 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
       })()}
 
       {lastWear && (
-        <div className="wear-undo">🛡 {lastWear.text}
-          <button className="btn sm" onClick={() => { const ch = characters.find((x) => x.id === lastWear.charId); if (ch) { onUpdateChar?.(undoWear(ch, lastWear.itemId, lastWear.prev)); setEncounter((e) => ({ ...e, log: log(e, `↩ Armor wear undone for ${ch.name}`, 'info') })) } setLastWear(null) }}>Undo</button>
+        <div className="wear-undo">{lastWear.kind === 'weapon' ? '⚔️' : '🛡'} {lastWear.text}
+          <button className="btn sm" onClick={() => { const ch = characters.find((x) => x.id === lastWear.charId); if (ch) { onUpdateChar?.(undoWear(ch, lastWear.itemId, lastWear.prev)); setEncounter((e) => ({ ...e, log: log(e, `↩ ${lastWear.kind === 'weapon' ? 'Weapon' : 'Armor'} wear undone for ${ch.name}`, 'info') })) } setLastWear(null) }}>Undo</button>
           <button className="icon-btn sm" aria-label="Dismiss" onClick={() => setLastWear(null)}>✕</button></div>
       )}
       {attack && byId(attack.a) && byId(attack.t) && (
@@ -415,6 +447,7 @@ interface AttackResult {
   attackerId: string; targetId: string; weapon: string; hit: boolean; crit: boolean
   type: DamageType; final: number; steps: string[]; rollText: string; heal?: boolean; shrug?: boolean
   spell?: { charId: string; slotLevel: number }; scroll?: { charId: string; itemId: string }; grant?: Trait; whetstone?: boolean; wear?: { amount: number; reason: string }
+  weaponWear?: { amount: number; reason: string; itemId: string }
 }
 const EFFECT_ICON: Record<import('../types').ActiveEffect['kind'], string> = { acBonus: '🪨', stoneskin: '🟫', frostbite: '❄️', mirror: '🪞', secondWind: '🍷', mending: '🔨', whetstone: '🗡️', badge: '✨' }
 
@@ -460,8 +493,11 @@ function AttackSheet({ attacker, target, onClose, onApply, caster, targetChar }:
   const [qCrit, setQCrit] = useState(false)
   const tArmor = equippedArmor(targetChar)
   const [skipWear, setSkipWear] = useState(false)
+  const [quickMiss, setQuickMiss] = useState(false)
+  const [skipWeaponWear, setSkipWeaponWear] = useState(false)
   const isCrit = quick ? qCrit : crit
-  const wear = tArmor?.tier ? wearFor({ crit: isCrit, weak: rawAcBonus < 0 && !stoneskin }) : null
+  const attackingHit = quick ? !quickMiss : hit
+  const wear = tArmor?.tier && attackingHit ? wearFor({ crit: isCrit, weak: rawAcBonus < 0 && !stoneskin }) : null
   const wearRes = wear && !skipWear ? wear : undefined
   const [bonus, setBonus] = useState(first?.bonus)
   const [bonusDmg, setBonusDmg] = useState(0)
@@ -514,9 +550,12 @@ function AttackSheet({ attacker, target, onClose, onApply, caster, targetChar }:
     if (sp.damageType) setType(sp.damageType)
     if (sp.effectType) setResType(sp.effectType)
     const dice = damageFor(sp, L, caster!.level); if (dice) setExpr(dice)
-    if (sp.attack) setToHit(charProf(caster!) + spellMod(caster!))
+    if (sp.attack) setToHit(charProf(caster!) + spellMod(caster!) + spellToHitBonus(caster!))
   }
   const scrollMode = isScroll(spell?.id)
+  const swung = !spell && !healing ? findSwungWeapon(caster, weapon) : undefined
+  const wWear = swung && !attackingHit ? { amount: WEAPON_MISS_WEAR, reason: 'miss', itemId: swung.id } : null
+  const wWearRes = wWear && !skipWeaponWear ? wWear : undefined
   const spellExtra = spell && caster ? (scrollMode ? { scroll: { charId: caster.id, itemId: spell.id.slice(7) } } : { spell: { charId: caster.id, slotLevel: spell.level === 0 ? 0 : slotLv } }) : {}
   const noSlot = !!spell && !scrollMode && spell.level > 0 && !availableSlots(cSlots, spell.level).some((o) => o.level === slotLv)
 
@@ -558,6 +597,11 @@ function AttackSheet({ attacker, target, onClose, onApply, caster, targetChar }:
           })}>
             {`Heal ${qNum} → ${target.name} (${target.hp}→${Math.min(target.maxHp, target.hp + qNum)} HP)`}
           </button>
+        ) : quickMiss ? (
+          <button className="btn big" onClick={() => onApply({
+            attackerId: attacker.id, targetId: target.id, weapon, hit: false, crit: false, type,
+            final: 0, steps: [], rollText: '', weaponWear: wWearRes, ...spellExtra,
+          })}>Log miss{wWearRes ? ` · weapon −${wWearRes.amount}` : ''}</button>
         ) : (
           <button className="btn big danger-fill" disabled={(qNum <= 0 && !outcome.steps.length) || noSlot} onClick={() => onApply({
             attackerId: attacker.id, targetId: target.id, weapon, hit: true, crit: qCrit, type,
@@ -569,7 +613,7 @@ function AttackSheet({ attacker, target, onClose, onApply, caster, targetChar }:
       ) : (
         <button className={'btn big ' + (hit ? 'danger-fill' : '')} onClick={() => onApply({
           attackerId: attacker.id, targetId: target.id, weapon, hit, crit, type,
-          final: outcome.final, steps: outcome.steps, rollText, shrug: hit && zeroBy === 'shrug', whetstone: whet && hit && !spell, wear: wearRes, ...spellExtra,
+          final: outcome.final, steps: outcome.steps, rollText, shrug: hit && zeroBy === 'shrug', whetstone: whet && hit && !spell, wear: wearRes, weaponWear: hit ? undefined : wWearRes, ...spellExtra,
         })}>
           {hit ? `Apply ${outcome.final} ${type} damage → ${target.name} (${target.hp}→${Math.max(0, target.hp - outcome.final)} HP)` : 'Log miss'}
         </button>
@@ -589,12 +633,19 @@ function AttackSheet({ attacker, target, onClose, onApply, caster, targetChar }:
           {bonus && <div className="reminder-item small row">🔥 Rider +{bonus.dice} {bonus.type}: <input aria-label="Rider damage" style={{ width: 56 }} inputMode="numeric" value={bonusDmg || ''} placeholder="0" onChange={(e) => setBonusDmg(Math.max(0, parseInt(e.target.value) || 0))} /></div>}
         </div>
       )}
-      {wear && tArmor && !healing && spell?.effect !== 'resistance' && (quick || hit) && (
+      {wear && tArmor && !healing && spell?.effect !== 'resistance' && attackingHit && (
         <div className={'wear-line small ' + (skipWear ? 'skipped' : '')}>
           <span>🛡 Armor durability <b>−{wear.amount}</b> ({wear.reason}) · {tArmor.name} {durOf(tArmor)}→{Math.max(0, durOf(tArmor) - wear.amount)}/{maxDur(tArmor)}</span>
           <button className="link small" onClick={() => setSkipWear(!skipWear)}>{skipWear ? 'Apply wear' : 'Skip'}</button>
         </div>
       )}
+      {wWear && swung && !healing && !spell && (
+        <div className={'wear-line weapon small ' + (skipWeaponWear ? 'skipped' : '')}>
+          <span>⚔️ Weapon durability <b>−{wWear.amount}</b> (miss) · {swung.name} {durOf(swung)}→{Math.max(0, durOf(swung) - wWear.amount)}/{maxDur(swung)}</span>
+          <button className="link small" onClick={() => setSkipWeaponWear(!skipWeaponWear)}>{skipWeaponWear ? 'Apply wear' : 'Skip'}</button>
+        </div>
+      )}
+      {quick && !healing && !spell && <button type="button" className={'chip ' + (quickMiss ? 'on' : '')} onClick={() => setQuickMiss(!quickMiss)}>{quickMiss ? '❌ Logging a miss' : '❌ This attack missed'}</button>}
       {quick && !healing && <button type="button" className={'chip crit-chip ' + (qCrit ? 'on' : '')} onClick={() => setQCrit(!qCrit)}>💥 Crit{qCrit ? ' ✓' : ''}</button>}
       <div className="entry-toggle">
         <Segmented value={entry} onChange={setEntry} options={[{ value: 'quick', label: '✋ Quick (table dice)' }, { value: 'full', label: '🎲 Roll in app' }]} />

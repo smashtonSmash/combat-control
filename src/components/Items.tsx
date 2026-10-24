@@ -1,10 +1,15 @@
 import { DurBar } from './DurBar'
-import { isBroken } from '../durability'
+import { isBroken, maxDur } from '../durability'
+import { itemRarity } from '../armor'
 import { useEffect, useMemo, useState } from 'react'
 import type { DamageType, Item, ItemKind } from '../types'
 import { DAMAGE_TYPES, uid } from '../types'
 import { ARMOR_CATALOG, TIERS, TIER_COLORS, TIER_SHORT, type Tier } from '../armor'
 import { COMMON_WEAPONS, KIND_ICON, armorItem, potionOfHealing, scrollItem, weaponItem } from '../inventory'
+import { accessoryItem } from '../accessories'
+import { materialItem } from '../salvage'
+import { pinkCoin, pinkLantern, whisperfang } from '../specialGear'
+import { tieredWeapon } from '../weapons'
 import { fromSrd, loadSpells, type CharSpell, type SrdSpell } from '../spells'
 import { CustomSpell } from './Spells'
 import { DAMAGE_ICONS } from '../types'
@@ -13,7 +18,8 @@ import { CONSUMABLES, armorPrice, catalogToItem, displayName, itemPrice } from '
 export function ItemCard({ it, selected, onClick, onPointerDown, dragging }: {
   it: Item; selected?: boolean; onClick?: () => void; onPointerDown?: (e: React.PointerEvent) => void; dragging?: boolean
 }) {
-  const color = it.tier ? TIER_COLORS[it.tier] : undefined
+  const rarity = itemRarity(it)
+  const color = rarity?.color
   return (
     <button type="button" className={`item-card ${it.equipped ? 'equipped' : ''} ${selected ? 'selected' : ''} ${dragging ? 'lifted' : ''}`}
       style={color ? { borderColor: color, boxShadow: `0 0 10px ${color}55` } : undefined}
@@ -21,10 +27,11 @@ export function ItemCard({ it, selected, onClick, onPointerDown, dragging }: {
       {it.equipped && <span className="eq-ribbon">EQUIPPED</span>}
       <span className="item-icon">{KIND_ICON[it.kind]}</span>
       <span className="item-name">{it.name}</span>
-      <small className="item-sub">{it.scroll?.kind === 'spell' ? `${it.scroll.spell.level ? 'lv ' + it.scroll.spell.level : 'cantrip'} scroll` : it.kind === 'weapon' ? `${it.damage} ${it.damageType}` : it.heal ? `heals ${it.heal}` : it.tier ? <span style={{ color }}>◆ {TIER_SHORT[it.tier]}</span> : it.kind}</small>
+      <small className="item-sub">{it.scroll?.kind === 'spell' ? `${it.scroll.spell.level ? 'lv ' + it.scroll.spell.level : 'cantrip'} scroll` : it.kind === 'weapon' ? `${it.damage} ${it.damageType}` : it.heal ? `heals ${it.heal}` : rarity ? <span style={{ color }}>◆ {rarity.label}</span> : it.materialKey ? 'material' : it.kind}</small>
       {it.qty > 1 && <span className="qty">×{it.qty}</span>}
-      {it.kind === 'armor' && it.tier && <DurBar it={it} small />}
-      {it.kind === 'armor' && isBroken(it) && <span className="broken-ribbon">BROKEN</span>}
+      {maxDur(it) > 0 && <DurBar it={it} small />}
+      {isBroken(it) && <span className="broken-ribbon">BROKEN</span>}
+      {it.special === 'black' && !it.synced && <span className="broken-ribbon">UNSYNCED</span>}
       {it.atForge && <span className="forge-ribbon">🔥 AT THE FORGE</span>}
       {itemPrice(it) != null && <span className="item-price">{itemPrice(it)}g</span>}
     </button>
@@ -55,6 +62,18 @@ export function ItemPicker({ onAdd, customSpells = [] }: { onAdd: (it: Item) => 
           <button className="btn sm" onClick={() => onAdd(armorItem(armorId, tier))}>🛡 + {TIER_SHORT[tier]} {ARMOR_CATALOG.find((a) => a.id === armorId)?.name} Armor <small>{armorPrice(armorId, tier)}g</small></button>
           <div className="mini-label">Weapons</div>
           <div className="chips-row wrap">{COMMON_WEAPONS.map((w) => <button key={w.name} className="chip" onClick={() => onAdd(weaponItem(w))}>+ {w.name} <small>{w.damage}</small></button>)}</div>
+          <div className="mini-label">Homebrew (first pass)</div>
+          <div className="chips-row wrap">
+            <button className="chip" onClick={() => onAdd(tieredWeapon('longsword', tier))}>+ {TIER_SHORT[tier]} Longsword</button>
+            <button className="chip" onClick={() => onAdd(tieredWeapon('greatsword', 'green'))}>+ Common Greatsword <small>2 slots</small></button>
+            <button className="chip" onClick={() => onAdd(accessoryItem('iron-cap'))}>+ Iron Cap</button>
+            <button className="chip" onClick={() => onAdd(accessoryItem('archer-gauntlets'))}>+ Archer’s Gauntlets</button>
+            <button className="chip" onClick={() => onAdd(accessoryItem('softstep-boots'))}>+ Softstep Boots</button>
+            <button className="chip" onClick={() => onAdd(materialItem('wolf_pelt', 2))}>+ 2 Wolf Pelts</button>
+            <button className="chip" onClick={() => onAdd(pinkLantern())}>+ Pink Lantern</button>
+            <button className="chip" onClick={() => onAdd(pinkCoin())}>+ Pink Coin</button>
+            <button className="chip" onClick={() => onAdd(whisperfang())}>+ Whisperfang</button>
+          </div>
         </>
       ) : (
         <>

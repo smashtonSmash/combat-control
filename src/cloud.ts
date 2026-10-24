@@ -2,6 +2,9 @@ import { createClient, type Session } from '@supabase/supabase-js'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from './supabaseConfig'
 import type { Character, Chest, Encounter } from './types'
+import type { PartyStash } from './party'
+import type { TownState } from './fountain'
+import type { RecapEvent } from './recap'
 import { migrateTiers } from './armor'
 import { migrateChestItems, migrateInventory } from './catalog'
 const normEnc = (e: Encounter | null) => (e ? { ...e, combatants: (e.combatants ?? []).map((c) => migrateInventory(migrateTiers(c))) } : e)
@@ -23,7 +26,7 @@ export function useSession() {
   return { session, ready }
 }
 
-export interface CampaignInfo { id: string; name: string; join_code: string; role: 'dm' | 'player'; dm_id: string; settings?: { originBudget?: number; allowReroll?: boolean } }
+export interface CampaignInfo { id: string; name: string; join_code: string; role: 'dm' | 'player'; dm_id: string; settings?: { originBudget?: number; allowReroll?: boolean; homebrew?: { party?: PartyStash; town?: TownState; recap?: RecapEvent[] } } }
 export interface MemberInfo { user_id: string; role: 'dm' | 'player'; display_name: string }
 
 export async function listCampaigns(userId: string): Promise<CampaignInfo[]> {
@@ -138,6 +141,11 @@ export function useCampaign(cid: string | null) {
     const { error } = await supabase.from('chests').delete().eq('id', id)
     if (error) { setError(error.message); load() }
   }, [load])
+  const transferCoins = useCallback(async (fromId: string, toId: string, gold: number, silver: number) => {
+    const { error } = await supabase.rpc('transfer_coins', { from_id: fromId, to_id: toId, gold, silver })
+    if (error) { setError(error.message); return error.message }
+    load(); return null
+  }, [load])
   const giveItem = useCallback(async (fromId: string, toId: string, itemId: string) => {
     const { error } = await supabase.rpc('give_item', { from_id: fromId, to_id: toId, item_id: itemId })
     if (error) { setError(error.message); return false }
@@ -161,5 +169,5 @@ export function useCampaign(cid: string | null) {
     }, 500)
   }, [cid])
 
-  return { chars, encounter, members, chests, saveChest, deleteChest, giveItem, takeLoot, status, error, setError, saveChar, deleteChar, pushEncounter, reload: load }
+  return { chars, encounter, members, chests, saveChest, deleteChest, giveItem, takeLoot, transferCoins, status, error, setError, saveChar, deleteChar, pushEncounter, reload: load }
 }

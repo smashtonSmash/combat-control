@@ -1,5 +1,5 @@
 // Homebrew armor catalog + rarity tiers. Add medium/heavy armor by appending to ARMOR_CATALOG.
-import type { DamageType } from './types'
+import type { DamageType, SpecialRarity } from './types'
 
 export const TIERS = ['green', 'blue', 'purple', 'legendary', 'mythic'] as const
 export type Tier = (typeof TIERS)[number]
@@ -11,6 +11,17 @@ export const TIER_COLORS: Record<Tier, string> = { green: '#4fbf63', blue: '#4a8
 /** Display names (ids stay green/blue/purple/legendary/mythic in saved data). */
 export const TIER_LABELS: Record<Tier, string> = { green: 'Common', blue: 'Rare', purple: 'Ultra Rare', legendary: 'Legendary', mythic: 'Mythic' }
 export const TIER_SHORT: Record<Tier, string> = { green: 'Common', blue: 'Rare', purple: 'Ultra Rare', legendary: 'Legendary', mythic: 'Mythic' }
+
+/** Outside the fuse ladder. Pink is a unique-ability tag, not a power step above Mythic. Black is a named mythic with a will of its own. */
+export const SPECIAL_RARITIES = ['pink', 'black'] as const
+export const SPECIAL_COLORS: Record<SpecialRarity, string> = { pink: '#e45aaa', black: '#d5d5de' }
+export const SPECIAL_LABELS: Record<SpecialRarity, string> = { pink: 'Pink', black: 'Black Mythic' }
+
+export function itemRarity(it: { tier?: Tier; special?: SpecialRarity }): { label: string; color: string } | null {
+  if (it.special) return { label: SPECIAL_LABELS[it.special], color: SPECIAL_COLORS[it.special] }
+  if (it.tier) return { label: TIER_SHORT[it.tier], color: TIER_COLORS[it.tier] }
+  return null
+}
 /** Old display names in stored text → new ones ('Purple Padded Armor' → 'Ultra Rare Padded Armor'). Idempotent. */
 const OLD_TIER_NAMES: Record<string, string> = { Green: 'Common', Blue: 'Rare', Purple: 'Ultra Rare' }
 export const renameTierText = (s: string) => s.replace(/\b(Green|Blue|Purple)(?= [A-Z])/g, (m) => OLD_TIER_NAMES[m])
