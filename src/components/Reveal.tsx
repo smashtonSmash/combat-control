@@ -4,6 +4,8 @@ import type { RevealEntry } from '../reveal'
 import { revealOrder, chestDrama } from '../reveal'
 import { ChestArt, ItemIcon, type ChestPhase } from './ChestArt'
 import { TIER_COLORS } from '../armor'
+import { WhoName, usePlayerDirectory } from './PlayerName'
+import { withPlayer } from '../playerLabel'
 
 /** Full-screen treasure reveal shown to players while the DM has a chest revealed. Updates live. */
 type TakeFn = (what: 'item' | 'pouch' | 'coins', ref: string | null, charId: string, gold: number, silver: number) => Promise<string | null>
@@ -68,6 +70,7 @@ function TakeSheet({ entry, chest, chars, onTake, onClose }: { entry: RevealEntr
   const [silver, setSilver] = useState(entry.type === 'coins' ? chest.silver : 0)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const dir = usePlayerDirectory()
   const name = entry.type === 'item' ? entry.item.name : entry.type === 'pouch' ? `Coin pouch (${entry.gold}g ${entry.silver}s)` : 'Loose coins'
   const go = async () => {
     setBusy(true); setErr(null)
@@ -83,10 +86,10 @@ function TakeSheet({ entry, chest, chars, onTake, onClose }: { entry: RevealEntr
         <div className="take-title">Take {name}?</div>
         {chars.length > 1 && (
           <label className="small">Give to
-            <select value={charId} onChange={(e) => setCharId(e.target.value)}>{chars.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+            <select value={charId} onChange={(e) => setCharId(e.target.value)}>{chars.map((c) => <option key={c.id} value={c.id}>{withPlayer(c.name, dir.label[c.id])}</option>)}</select>
           </label>
         )}
-        {chars.length === 1 && <div className="small muted">Goes to {chars[0].name}{entry.type === 'item' ? "'s inventory" : "'s purse"}</div>}
+        {chars.length === 1 && <div className="small muted">Goes to <WhoName id={chars[0].id} name={chars[0].name} />{entry.type === 'item' ? "'s inventory" : "'s purse"}</div>}
         {entry.type === 'coins' && (
           <div className="take-coins">
             <label>Gold <input type="number" inputMode="numeric" min={0} max={chest.gold} value={gold} onChange={(e) => setGold(clamp(+e.target.value, chest.gold))} /> <small>of {chest.gold}</small></label>

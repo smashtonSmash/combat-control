@@ -20,6 +20,9 @@ export function armorPrice(armorId: string | undefined, tier: Tier): number {
 // ---------- Armor durability ----------
 /** Max durability by tier id. */
 export const ARMOR_DURABILITY: Record<Tier, number> = { green: 10, blue: 15, purple: 20, legendary: 30, mythic: 40 }
+/** PLACEHOLDER: weapon durability matches armor until Ashton sets separate numbers. Misses spend this much (hits spend none). */
+export const WEAPON_DURABILITY: Record<Tier, number> = { green: 10, blue: 15, purple: 20, legendary: 30, mythic: 40 }
+export const WEAPON_MISS_WEAR = 1
 /** Wear when the wearer is hit (the higher applies). */
 export const WEAR = { hit: 1, weakType: 2, crit: 3, weakCrit: 3 }
 /** Damaged at or below this fraction of max → −1 AC. Broken at 0. */

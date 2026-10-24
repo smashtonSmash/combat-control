@@ -1,12 +1,20 @@
 // Armor durability: wear on hits, Damaged / Broken states, repairs. Numbers live in catalog.ts.
 import type { Character, DamageType, Item } from './types'
-import { ARMOR_DURABILITY, BROKEN_REPAIR_MULT, DAMAGED_AT, REPAIR_COST_PER_POINT, WEAR } from './catalog'
+import { ARMOR_DURABILITY, BROKEN_REPAIR_MULT, DAMAGED_AT, REPAIR_COST_PER_POINT, WEAPON_DURABILITY, WEAR } from './catalog'
 import { TIER_SHORT } from './armor'
 
-export const maxDur = (it: Item) => (it.kind === 'armor' && it.tier ? ARMOR_DURABILITY[it.tier] : 0)
+/** Armor uses its tier. Tiered weapons use the same table (placeholder). Named black mythics use the Mythic cap. Pink uniques are not durability gear. */
+export const maxDur = (it: Item) => {
+  if (it.kind === 'weapon' && it.special === 'black') return WEAPON_DURABILITY.mythic
+  if (it.special) return 0
+  if (it.kind === 'armor' && it.tier) return ARMOR_DURABILITY[it.tier]
+  if (it.kind === 'weapon' && it.tier) return WEAPON_DURABILITY[it.tier]
+  return 0
+}
 export const durOf = (it: Item) => Math.max(0, Math.min(maxDur(it), it.dur ?? maxDur(it)))
-export const isBroken = (it: Item) => it.kind === 'armor' && !!it.tier && durOf(it) <= 0
-export const isDamaged = (it: Item) => it.kind === 'armor' && !!it.tier && !isBroken(it) && durOf(it) <= maxDur(it) * DAMAGED_AT
+export const isBroken = (it: Item) => maxDur(it) > 0 && durOf(it) <= 0
+/** Damaged (−1 AC) is armor only. Weapons don't take that penalty. */
+export const isDamaged = (it: Item) => it.kind === 'armor' && !!it.tier && !it.special && !isBroken(it) && durOf(it) <= maxDur(it) * DAMAGED_AT
 export const durState = (it: Item): 'ok' | 'damaged' | 'broken' => (isBroken(it) ? 'broken' : isDamaged(it) ? 'damaged' : 'ok')
 export const equippedArmor = (c?: Character) => (c?.inventory ?? []).find((i) => i.kind === 'armor' && i.equipped)
 

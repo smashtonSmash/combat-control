@@ -1,6 +1,6 @@
 import { clearEffects } from './effects'
 import { migrateChestItems, migrateInventory } from './catalog'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Character, Chest, DiceRoll, Encounter, Item, WikiPage } from './types'
 import { useStored } from './store'
 import { charProf, characterToCombatant, extraSamples, sampleCharacters, sampleEncounter, samplePages } from './seed'
@@ -10,6 +10,11 @@ import Dice from './screens/Dice'
 import Campaign from './screens/Campaign'
 import Casino from './screens/Casino'
 import Loot from './screens/Loot'
+import Town from './screens/Town'
+import Rules from './screens/Rules'
+import { emptyParty, transferPurse, type PartyStash } from './party'
+import { defaultTown, type TownState } from './fountain'
+import { makeRecap, type RecapEvent, type RecapKind } from './recap'
 import { RevealOverlay } from './components/Reveal'
 import { addItem, removeItem } from './inventory'
 import { effectiveSlots, isCaster } from './components/Spells'
@@ -17,6 +22,8 @@ import { loadSpells, restoreAll, spendSlot } from './spells'
 import { applyDelta } from './casino/money'
 import { listCampaigns, useCampaign, useSession, supabase, type CampaignInfo } from './cloud'
 import { CloudSheet } from './components/Cloud'
+import { PlayerNames } from './components/PlayerName'
+import { playerDirectory } from './playerLabel'
 import { uid } from './types'
 import { migrateTiers } from './armor'
 
@@ -30,6 +37,8 @@ const TABS = [
   { id: 'campaign', label: 'Campaign', icon: '📜' },
   { id: 'loot', label: 'Loot', icon: '💎' },
   { id: 'casino', label: 'Casino', icon: '🎰' },
+  { id: 'town', label: 'Town', icon: '⛲' },
+  { id: 'rules', label: 'DM', icon: '📋' },
 ] as const
 type Tab = (typeof TABS)[number]['id']
 
@@ -113,6 +122,12 @@ export default function App() {
   const characters: Character[] = online
     ? cloud.chars.filter((r) => isDM || r.owner_id === myId).map((r) => r.data)
     : localChars
+  const players = useMemo(() => playerDirectory(
+    online
+      ? cloud.chars.map((r) => ({ id: r.id, ownerId: r.owner_id, playerName: r.data.playerName }))
+      : localChars.map((c) => ({ id: c.id, playerName: c.playerName })),
+    online ? cloud.members : [],
+  ), [online, cloud.chars, cloud.members, localChars])
   const encounter: Encounter = online ? (isDM ? dmEnc ?? emptyEncounter() : cloud.encounter ?? emptyEncounter()) : localEnc
   const setEnc = online ? (isDM ? setDmEncounter : () => { /* players watch the DM's battle */ }) : setEncounter
   const copyLocal = () => {
@@ -205,6 +220,11 @@ export default function App() {
   }
   // ---- loot / inventory ----
   const [localChests, setLocalChests] = useStored<Chest[]>('chests', () => [])
+  const [party, setParty] = useStored<PartyStash>('party', emptyParty)
+  const [town, setTown] = useStored<TownState>('town', defaultTown)
+  const [recap, setRecap] = useStored<RecapEvent[]>('sessionRecap', () => [])
+  const [pendingLoot, setPendingLoot] = useStored<Item[]>('pendingLoot', () => [])
+  const hydrated = useRef<string | null>(null)
   const chests = online ? cloud.chests : localChests
   const saveChest = (k: Chest) => (online ? cloud.saveChest(k) : setLocalChests((ks) => (ks.some((x) => x.id === k.id) ? ks.map((x) => (x.id === k.id ? k : x)) : [...ks, k])))
   const deleteChest = (id: string) => (online ? cloud.deleteChest(id) : setLocalChests((ks) => ks.filter((x) => x.id !== id)))
@@ -230,13 +250,52 @@ export default function App() {
         await supabase.from('campaigns').update({ settings: { ...active!.settings, allowReroll: v } }).eq('id', active!.id)
       } : undefined)
     : setLocalReroll
+  const homebrewKey = online && active?.settings?.homebrew ? active.id : ''
+  useEffect(() => {
+    if (!homebrewKey || !active?.settings?.homebrew) return
+    if (hydrated.current === homebrewKey) return
+    hydrated.current = homebrewKey
+    const h = active.settings.homebrew
+    if (h.party) setParty(h.party)
+    if (h.town) setTown(h.town)
+    if (h.recap) setRecap(h.recap)
+  }, [homebrewKey, active?.settings?.homebrew, setParty, setTown, setRecap])
+  const pushHomebrew = (patch: { party?: PartyStash; town?: TownState; recap?: RecapEvent[] }) => {
+    if (!online || !isDM || !active) return
+    const settings = { ...active.settings, homebrew: { ...active.settings?.homebrew, ...patch } }
+    setCampaigns((cs) => cs.map((x) => (x.id === active.id ? { ...x, settings } : x)))
+    void supabase.from('campaigns').update({ settings }).eq('id', active.id)
+  }
+  const note = (kind: RecapKind, text: string) => setRecap((rs) => {
+    const next = [...rs, makeRecap(kind, text)].slice(-300)
+    pushHomebrew({ recap: next })
+    return next
+  })
+  const saveParty = (p: PartyStash) => { setParty(p); pushHomebrew({ party: p }) }
+  const saveTown = (t: TownState) => { setTown(t); pushHomebrew({ town: t }) }
   const giveItemTo = (charId: string, item: Item) => {
     const c = allChars.find((x) => x.id === charId)
-    if (c) saveCharacter(addItem(c, item))
+    if (c) { saveCharacter(addItem(c, item)); note('loot', `${c.name} received ${item.name}${item.qty > 1 ? ` ×${item.qty}` : ''}.`) }
   }
   const giveCoinsTo = (charId: string, gold: number, silver: number) => {
     const c = allChars.find((x) => x.id === charId)
     if (c) saveCharacter({ ...c, purse: { gold: (c.purse?.gold ?? 0) + gold, silver: (c.purse?.silver ?? 0) + silver } })
+  }
+  const transferCoins = async (fromId: string, toId: string, gold: number, silver: number) => {
+    const from = allChars.find((x) => x.id === fromId)
+    const to = allChars.find((x) => x.id === toId)
+    if (!from || !to || fromId === toId) return
+    const r = transferPurse(from.purse, to.purse, gold, silver)
+    if (!r.ok) return
+    if (online) {
+      const err = await cloud.transferCoins(fromId, toId, gold, silver)
+      if (err && isDM) { saveCharacter({ ...from, purse: r.from }); saveCharacter({ ...to, purse: r.to }) }
+      if (!err) note('transfer', `${from.name} sends ${gold}g ${silver}s to ${to.name}.`)
+      return
+    }
+    saveCharacter({ ...from, purse: r.from })
+    saveCharacter({ ...to, purse: r.to })
+    note('transfer', `${from.name} sends ${gold}g ${silver}s to ${to.name}.`)
   }
   const giveBetween = async (from: Character, toId: string, itemId: string) => {
     const item = (from.inventory ?? []).find((i) => i.id === itemId)
@@ -286,20 +345,24 @@ export default function App() {
       )}
       {online && !isDM && tab === 'battle' && <div className="live-banner">👁 Live view of {active!.name}’s battle — your DM runs combat. Damage they deal updates your sheet’s HP.</div>}
       {online && cloud.error && <div className="live-banner" style={{ borderColor: '#a83a28', background: '#2a1210' }}>⚠ Sync problem: {cloud.error} <button className="link" onClick={() => cloud.setError('')}>dismiss</button></div>}
+      <PlayerNames value={players}>
       <main key={tab} className="fade-in">
-        {tab === 'battle' && <Battle encounter={encounter} setEncounter={setEnc} characters={characters} onSpendSlot={spendCharSlot} onUseScroll={useScroll} onRest={restAll} onUpdateChar={saveCharacter} portraits={Object.fromEntries(allChars.map((c) => [c.id, c.portrait]))} />}
+        {tab === 'battle' && <Battle encounter={encounter} setEncounter={setEnc} characters={characters} onSpendSlot={spendCharSlot} onUseScroll={useScroll} onRest={restAll} onUpdateChar={saveCharacter} portraits={Object.fromEntries(allChars.map((c) => [c.id, c.portrait]))} onRecap={note} onDrops={(items, source) => { setPendingLoot((xs) => [...items, ...xs].slice(0, 40)); void source }} />}
         {tab === 'characters' && (
           <>
-            <Characters characters={characters} onSave={saveCharacter} onDelete={deleteCharacter} giveTargets={allChars.map((c) => ({ id: c.id, name: c.name }))} onGive={giveBetween} customBudget={customBudget} onBudget={setBudget} allowReroll={allowReroll} onAllowReroll={setAllowReroll} />
+            <Characters characters={characters} onSave={saveCharacter} onDelete={deleteCharacter} giveTargets={allChars.map((c) => ({ id: c.id, name: c.name }))} onGive={giveBetween} customBudget={customBudget} onBudget={setBudget} allowReroll={allowReroll} onAllowReroll={setAllowReroll} party={party} onParty={saveParty} canToggleParty={!online || isDM} onTransfer={transferCoins} onRecap={note} />
             {hasSamples && <div className="center pad"><button className="btn ghost danger" onClick={removeSamples}>Remove all sample data</button></div>}
           </>
         )}
         {tab === 'dice' && <Dice history={history} setHistory={setHistory} />}
         {tab === 'campaign' && <Campaign pages={pages} setPages={setPages} />}
-        {tab === 'loot' && <Loot chests={chests} saveChest={saveChest} deleteChest={deleteChest} characters={allChars} onGiveItem={giveItemTo} onGiveCoins={giveCoinsTo} readOnly={online && !isDM} online={online} onOpenReveal={() => setDismissedReveal(null)} onSaveChar={saveCharacter} />}
+        {tab === 'loot' && <Loot chests={chests} saveChest={saveChest} deleteChest={deleteChest} characters={allChars} onGiveItem={giveItemTo} onGiveCoins={giveCoinsTo} readOnly={online && !isDM} online={online} onOpenReveal={() => setDismissedReveal(null)} onSaveChar={saveCharacter} pendingLoot={pendingLoot} onPendingLoot={setPendingLoot} onRecap={note} />}
         {tab === 'casino' && <Casino characters={characters} adjust={adjustCoins} />}
+        {tab === 'town' && <Town characters={allChars} town={town} onTown={saveTown} onSave={saveCharacter} isDM={!online || isDM} onRecap={note} />}
+        {tab === 'rules' && <Rules recap={recap} onClearRecap={() => { setRecap([]); pushHomebrew({ recap: [] }) }} />}
       </main>
       {showReveal && revealed && <RevealOverlay chest={revealed} myChars={characters} onTake={(what, ref, charId, g, s) => cloud.takeLoot(revealed.id, charId, what, ref, g, s)} onClose={() => setDismissedReveal(revealed.revealedAt ?? null)} />}
+      </PlayerNames>
       {cloudOpen && (
         <CloudSheet session={session} campaigns={campaigns} activeId={active?.id ?? null} members={cloud.members}
           onSelect={(id) => setActiveId(id)} onRefresh={refreshCampaigns} onClose={() => { setCloudOpen(false); if (location.hash.includes('join=')) history_replace(tab) }}

@@ -38,6 +38,10 @@ export interface Abilities { str: number; dex: number; con: number; int: number;
 export interface Purse { gold: number; silver: number }
 
 export type ItemKind = 'armor' | 'weapon' | 'consumable' | 'scroll' | 'misc'
+export type EquipSlot = 'head' | 'hands' | 'feet'
+export type WeaponStyle = 'melee' | 'ranged'
+/** Pink and black sit beside the Common→Mythic ladder. They are not fuse steps. */
+export type SpecialRarity = 'pink' | 'black'
 
 /**
  * What a scroll does. Extend this union for new scroll kinds, e.g.
@@ -71,6 +75,34 @@ export interface Item {
   atForge?: boolean
   /** weapon coatings until the next long rest (oils / Ember Flask) */
   coating?: { type?: DamageType; bonus?: { dice: string; type: DamageType }; source: string }
+  /** catalog weapon id (src/weapons.ts). Untiered legacy weapons omit this. */
+  weaponId?: string
+  weaponStyle?: WeaponStyle
+  /** Shadowdark slot cost. Omitted = derived (armor 1, great weapons 2, other stacks 1). */
+  slotCost?: number
+  /** accessory slot, separate from body armor */
+  equipSlot?: EquipSlot
+  /** flat AC from a helmet. Not an armor layer. */
+  perkAc?: number
+  /** PLACEHOLDER: added to ranged weapon attacks while this accessory is equipped */
+  perkRanged?: number
+  /** PLACEHOLDER: added to spell attacks while this accessory is equipped */
+  perkSpell?: number
+  /** crafting material id (src/salvage.ts) */
+  materialKey?: string
+  /** tiered repair kit. Optional armor family; omitted = any armor of kitTier. */
+  kitTier?: import('./armor').Tier
+  kitArmorId?: string
+  /** pink unique or named black mythic. Not a fuse tier. */
+  special?: SpecialRarity
+  /** black mythic: owner has chosen to sync. Unsynced gear cannot be used. */
+  synced?: boolean
+  /** character id the black mythic is bonded to */
+  bondedTo?: string
+  /** stub unique ability, shown in the UI. Not a stat boost. */
+  abilityNote?: string
+  /** player marked this armor to be broken down at the blacksmith */
+  salvaged?: boolean
 }
 
 export interface Chest { id: string; name: string; items: Item[]; gold: number; silver: number; pouches?: { id: string; gold: number; silver: number }[]; updated?: number
@@ -85,6 +117,8 @@ export interface Chest { id: string; name: string; items: Item[]; gold: number; 
 export interface Character extends ArmorFields {
   id: string
   name: string
+  /** Real person at the table. Optional. Used offline, and online only when the account has no display name. */
+  playerName?: string
   cls: string
   level: number
   race: string
@@ -129,6 +163,8 @@ export interface Character extends ArmorFields {
   abilityGen?: import('./components/AbilityGen').GenState
   /** active potion / scroll effects (cleared by long rest or End combat) */
   effects?: ActiveEffect[]
+  /** merchantId → favor 0–100. Higher favor, better prices. PLACEHOLDER scale. */
+  favor?: Record<string, number>
 }
 
 export interface ActiveEffect {
