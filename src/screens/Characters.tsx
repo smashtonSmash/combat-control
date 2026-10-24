@@ -27,6 +27,8 @@ import { ABIL_KEYS, ABIL_NAMES, SKILLS, applyBonuses, saveMod, skillMod, totalBo
 import { Portrait, PortraitPicker } from '../components/Portrait'
 import { AbilityGenerator } from '../components/AbilityGen'
 import { KIND_ICON } from '../inventory'
+import { WhoName, usePlayerDirectory } from '../components/PlayerName'
+import { cleanPlayerName, withPlayer } from '../playerLabel'
 
 const blank = (): Character => ({
   id: uid(), name: '', cls: '', level: 1, race: '',
@@ -75,7 +77,7 @@ export default function Characters({ characters, onSave, onDelete, giveTargets =
               <div className="ac-shield" style={c.armorTier ? { filter: `drop-shadow(0 0 6px ${TIER_COLORS[c.armorTier]})` } : undefined}><small>AC</small><b>{c.ac}</b></div>
             </div>
             <div className="char-main">
-              <b className="char-name">{c.name || 'Unnamed'}</b>
+              <b className="char-name"><WhoName id={c.id} name={c.name || 'Unnamed'} /></b>
               <div className="muted small">{[c.race, c.cls, c.level && `Lv ${c.level}`].filter(Boolean).join(' · ')}</div>
               {c.armorTier && <TierBadge tier={c.armorTier} />}
               {(c.inventory ?? []).some((i) => i.equipped) && <div className="small">⚔️ {(c.inventory ?? []).filter((i) => i.equipped).map((i) => i.name).join(', ')}</div>}
@@ -113,6 +115,7 @@ function CharacterSheet({ c, isNew, onClose, onSave, onDelete, onPersist, giveTa
 }) {
   const [d, setD] = useState(c)
   const [picking, setPicking] = useState(false)
+  const account = usePlayerDirectory().account[d.id]
   const bonus = totalBonus(d)
   const recalc = (n0: Character): Character => {
     const n = { ...n0, armorDamaged: armorDamagedFlag(n0) || undefined }
@@ -127,7 +130,7 @@ function CharacterSheet({ c, isNew, onClose, onSave, onDelete, onPersist, giveTa
     return recalc(n)
   })
   return (
-    <Sheet open onClose={onClose} tall title={isNew ? 'New character' : d.name || 'Character'}
+    <Sheet open onClose={onClose} tall title={isNew ? 'New character' : <WhoName id={d.id} name={d.name || 'Character'} />}
       footer={<button className="btn big primary" disabled={!d.name.trim()} onClick={() => onSave(d)}>Save character</button>}>
       <div className="edit-top">
         <button type="button" className="portrait-btn" onClick={() => setPicking(true)} aria-label="Change portrait">
@@ -135,6 +138,9 @@ function CharacterSheet({ c, isNew, onClose, onSave, onDelete, onPersist, giveTa
         </button>
         <div className="grow">
           <TextField label="Name" value={d.name} onChange={(v) => set({ name: v })} placeholder="Thorin" />
+          {account && <div className="small">Played by <b>{account}</b> <span className="muted">(campaign account)</span></div>}
+          <TextField label="Player name" value={d.playerName ?? ''} onChange={(v) => set({ playerName: cleanPlayerName(v) })} placeholder="Optional" />
+          <div className="small muted">{account ? 'Used offline, or when that account has no display name. Leave blank if you don’t know.' : 'Optional. Who plays this character, so the table can tell them apart. Leave blank if you don’t know.'}</div>
           <div className="grid2">
             <NumField label="Level" value={d.level} onChange={(v) => set({ level: v })} />
             <NumField label="Speed (ft)" value={d.speed ?? 30} onChange={(v) => set({ speed: v })} />
@@ -270,7 +276,7 @@ function CoinPurse({ d, set, targets = [], onTransfer }: { d: Character; set: (p
       {onTransfer && targets.length > 0 && (
         <>
           <div className="mini-label">Send to another character</div>
-          <div className="chips-row wrap">{targets.map((t) => <button key={t.id} type="button" className={'chip ' + (toId === t.id ? 'on' : '')} onClick={() => setToId(t.id)}>{t.name}</button>)}</div>
+          <div className="chips-row wrap">{targets.map((t) => <button key={t.id} type="button" className={'chip ' + (toId === t.id ? 'on' : '')} onClick={() => setToId(t.id)}><WhoName id={t.id} name={t.name} /></button>)}</div>
           <button className="btn sm" disabled={!toId} onClick={() => onTransfer(d.id, toId, coin === 'gold' ? amt : 0, coin === 'silver' ? amt : 0)}>Send {amt} {coin === 'gold' ? 'gold' : 'silver'}</button>
         </>
       )}
@@ -282,6 +288,7 @@ function Inventory({ d, commit, giveTargets, onGive, onRecap }: {
   d: Character; commit: (c: Character) => void; giveTargets: { id: string; name: string }[]; onGive?: GiveFn
   onRecap?: (kind: RecapKind, text: string) => void
 }) {
+  const dir = usePlayerDirectory()
   const inv = d.inventory ?? []
   const [sel, setSel] = useState<string | null>(null)
   const [kitFor, setKitFor] = useState<string | null>(null)
@@ -370,8 +377,8 @@ function Inventory({ d, commit, giveTargets, onGive, onRecap }: {
                   if (from !== d) commit(from)
                   const ok = await onGive!(from, t.id, it.id)
                   if (ok) { setD_after(from) } else setMsg('Could not give that item.')
-                  function setD_after(f: Character) { commit(removeItem(f, it!.id)); setMsg(`Gave ${it!.name} to ${t.name}.`); close() }
-                }}>→ {t.name}</button>
+                  function setD_after(f: Character) { commit(removeItem(f, it!.id)); setMsg(`Gave ${it!.name} to ${withPlayer(t.name, dir.label[t.id])}.`); close() }
+                }}>→ <WhoName id={t.id} name={t.name} /></button>
               ))}
             </div>
           )}
@@ -396,13 +403,13 @@ function CharacterView({ c, onClose, onEdit, onPersist, giveTargets, onGive, onT
   const [, force] = useState(0)
   const commit = (n: Character) => { onPersist(n); force((x) => x + 1) }
   return (
-    <Sheet open onClose={onClose} tall title={<span className="cv-titlebar">{c.name || 'Character'}</span>}
+    <Sheet open onClose={onClose} tall title={<span className="cv-titlebar"><WhoName id={c.id} name={c.name || 'Character'} /></span>}
       footer={<button className="btn big primary" onClick={onEdit}>✎ Edit character</button>}>
       <div className="cv">
         <div className="cv-hero">
           <Portrait src={c.portrait} name={c.name} size={132} className="cv-portrait" />
           <div className="cv-id">
-            <h2>{c.name || 'Unnamed'}</h2>
+            <h2><WhoName id={c.id} name={c.name || 'Unnamed'} /></h2>
             <div className="cv-sub">{[c.race, c.cls && `${c.cls} ${c.level}`].filter(Boolean).join(' · ') || `Level ${c.level}`}</div>
             {c.background && <div className="cv-bg">📖 {c.background}</div>}
             <button className="btn sm cv-edit" onClick={onEdit}>✎ Edit</button>

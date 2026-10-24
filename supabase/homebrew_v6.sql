@@ -5,6 +5,10 @@
 --   characters.data.inventory[]     new optional item fields (weaponId, tier on weapons,
 --                                   kitTier, materialKey, equipSlot, special, synced, salvaged, slotCost)
 --   characters.data.favor           { [merchantId]: 0-100 }
+--   characters.data.playerName      optional offline label. While signed in, the UI
+--                                   prefers members.display_name for characters.owner_id.
+--                                   No new column: display_name already exists, and
+--                                   playerName rides in the character jsonb.
 --
 -- Party stash, the town list, the fountain pool, and the session recap are DM-owned
 -- and live on campaigns.settings (jsonb added in v5). Players cannot update campaigns.

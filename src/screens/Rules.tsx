@@ -67,6 +67,7 @@ export default function Rules({ recap, onClearRecap }: { recap: RecapEvent[]; on
           <li><b>Merchants.</b> {MERCHANTS.map((m) => `${m.name} (${m.style}, starts at ${m.baseAdjust > 0 ? '+' : ''}${m.baseAdjust}%)`).join('; ')}. PLACEHOLDER: every 5 favor removes 1% from that markup.</li>
           <li><b>Loot.</b> {LOOT_TABLES.map((t) => `${t.name} gear ${(t.gearChance * 100).toFixed(0)}% / parts ${(t.partChance * 100).toFixed(0)}%`).join('; ')}. A miss on the roll means nothing. Goblins can drop a Common weapon or “Goblin Something”.</li>
           <li><b>Party stash.</b> DM toggle. Shared coins and a shared pack, plus person-to-person coin gifts.</li>
+          <li><b>Player names.</b> Sheets show “Character (Player)” when we know who is playing. Signed in, that is the campaign member’s display name. Offline, the DM can type an optional player name. Blank stays blank.</li>
           <li><b>Fountain.</b> Towns only, and only when that town’s flag is on. Secret threshold is a fresh pick from {FOUNTAIN_THRESHOLDS.join(', ')} gold. The prize is <b>PLACEHOLDER (TBD)</b>.</li>
         </ul>
       </section>

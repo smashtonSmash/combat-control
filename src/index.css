@@ -220,6 +220,9 @@ h1, h2, h3, h4 { font-family: var(--serif); color: var(--gold2); letter-spacing:
 .char-card:active { transform: scale(.98); }
 .char-main { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .char-name { font-family: var(--serif); font-size: 18px; color: var(--parch); }
+.player-tag { font-weight: 550; color: var(--muted); font-size: 0.78em; white-space: nowrap; }
+h2 .player-tag, .cv-titlebar .player-tag { font-family: var(--sans); letter-spacing: 0; font-weight: 600; }
+.turn-chip.now .player-tag { color: #5c4316; }
 .abil-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
 .abil { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 2px; border-radius: 12px; background: #120f0c; border: 1px solid var(--line); }
 .abil span { font-size: 10px; font-weight: 800; color: var(--gold); letter-spacing: .08em; }

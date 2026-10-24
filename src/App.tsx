@@ -1,6 +1,6 @@
 import { clearEffects } from './effects'
 import { migrateChestItems, migrateInventory } from './catalog'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Character, Chest, DiceRoll, Encounter, Item, WikiPage } from './types'
 import { useStored } from './store'
 import { charProf, characterToCombatant, extraSamples, sampleCharacters, sampleEncounter, samplePages } from './seed'
@@ -22,6 +22,8 @@ import { loadSpells, restoreAll, spendSlot } from './spells'
 import { applyDelta } from './casino/money'
 import { listCampaigns, useCampaign, useSession, supabase, type CampaignInfo } from './cloud'
 import { CloudSheet } from './components/Cloud'
+import { PlayerNames } from './components/PlayerName'
+import { playerDirectory } from './playerLabel'
 import { uid } from './types'
 import { migrateTiers } from './armor'
 
@@ -120,6 +122,12 @@ export default function App() {
   const characters: Character[] = online
     ? cloud.chars.filter((r) => isDM || r.owner_id === myId).map((r) => r.data)
     : localChars
+  const players = useMemo(() => playerDirectory(
+    online
+      ? cloud.chars.map((r) => ({ id: r.id, ownerId: r.owner_id, playerName: r.data.playerName }))
+      : localChars.map((c) => ({ id: c.id, playerName: c.playerName })),
+    online ? cloud.members : [],
+  ), [online, cloud.chars, cloud.members, localChars])
   const encounter: Encounter = online ? (isDM ? dmEnc ?? emptyEncounter() : cloud.encounter ?? emptyEncounter()) : localEnc
   const setEnc = online ? (isDM ? setDmEncounter : () => { /* players watch the DM's battle */ }) : setEncounter
   const copyLocal = () => {
@@ -337,6 +345,7 @@ export default function App() {
       )}
       {online && !isDM && tab === 'battle' && <div className="live-banner">👁 Live view of {active!.name}’s battle — your DM runs combat. Damage they deal updates your sheet’s HP.</div>}
       {online && cloud.error && <div className="live-banner" style={{ borderColor: '#a83a28', background: '#2a1210' }}>⚠ Sync problem: {cloud.error} <button className="link" onClick={() => cloud.setError('')}>dismiss</button></div>}
+      <PlayerNames value={players}>
       <main key={tab} className="fade-in">
         {tab === 'battle' && <Battle encounter={encounter} setEncounter={setEnc} characters={characters} onSpendSlot={spendCharSlot} onUseScroll={useScroll} onRest={restAll} onUpdateChar={saveCharacter} portraits={Object.fromEntries(allChars.map((c) => [c.id, c.portrait]))} onRecap={note} onDrops={(items, source) => { setPendingLoot((xs) => [...items, ...xs].slice(0, 40)); void source }} />}
         {tab === 'characters' && (
@@ -353,6 +362,7 @@ export default function App() {
         {tab === 'rules' && <Rules recap={recap} onClearRecap={() => { setRecap([]); pushHomebrew({ recap: [] }) }} />}
       </main>
       {showReveal && revealed && <RevealOverlay chest={revealed} myChars={characters} onTake={(what, ref, charId, g, s) => cloud.takeLoot(revealed.id, charId, what, ref, g, s)} onClose={() => setDismissedReveal(revealed.revealedAt ?? null)} />}
+      </PlayerNames>
       {cloudOpen && (
         <CloudSheet session={session} campaigns={campaigns} activeId={active?.id ?? null} members={cloud.members}
           onSelect={(id) => setActiveId(id)} onRefresh={refreshCampaigns} onClose={() => { setCloudOpen(false); if (location.hash.includes('join=')) history_replace(tab) }}

@@ -19,6 +19,8 @@ import { spellToHitBonus } from '../accessories'
 import { availableSlots, damageFor, scrollStats, spellMod } from '../spells'
 import { effectiveSlots } from '../components/Spells'
 import { charProf } from '../seed'
+import { WhoName, usePlayerDirectory } from '../components/PlayerName'
+import { withPlayer } from '../playerLabel'
 
 type SetEnc = (f: (e: Encounter) => Encounter) => void
 
@@ -28,6 +30,8 @@ const log = (e: Encounter, text: string, kind: LogEntry['kind']): LogEntry[] =>
   [{ id: uid(), round: e.round, text, kind, time: Date.now() }, ...e.log].slice(0, 200)
 
 export default function Battle({ encounter, setEncounter, characters, onSpendSlot, onUseScroll, onRest, portraits = {}, onUpdateChar, onRecap, onDrops }: Props) {
+  const dir = usePlayerDirectory()
+  const played = (c: { name: string; characterId?: string }) => withPlayer(c.name, c.characterId ? dir.label[c.characterId] : undefined)
   const charOf = (cb?: Combatant) => (cb?.characterId ? characters.find((x) => x.id === cb.characterId) : undefined)
   const { combatants, round, turnId } = encounter
   const party = combatants.filter((c) => c.side === 'party')
@@ -138,7 +142,7 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
         if (alive(ord[idx])) break
       }
       const next = { ...e, turnId: ord[idx].id, round: r }
-      return { ...next, log: log(next, r !== e.round ? `— Round ${r} begins — ${ord[idx].name}'s turn` : `${ord[idx].name}'s turn`, 'info') }
+      return { ...next, log: log(next, r !== e.round ? `— Round ${r} begins — ${played(ord[idx])}'s turn` : `${played(ord[idx])}'s turn`, 'info') }
     })
   }
 
@@ -203,9 +207,9 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
       if (ch) {
         const w = applyWear(ch, res.wear.amount)
         if (w.itemId) {
-          onUpdateChar?.(w.char); setLastWear({ kind: 'armor', charId: ch.id, itemId: w.itemId, prev: w.prev!, text: `${ch.name}: armor −${res.wear.amount} (${res.wear.reason})` })
+          onUpdateChar?.(w.char); setLastWear({ kind: 'armor', charId: ch.id, itemId: w.itemId, prev: w.prev!, text: `${withPlayer(ch.name, dir.label[ch.id])}: armor −${res.wear.amount} (${res.wear.reason})` })
           setEncounter((e) => ({ ...e, log: log(e, `🛡 ${w.message} (−${res.wear!.amount}, ${res.wear!.reason})`, 'info') }))
-          if (w.message.includes('BROKEN')) onRecap?.('broken', `${ch.name}: ${w.message}`)
+          if (w.message.includes('BROKEN')) onRecap?.('broken', `${withPlayer(ch.name, dir.label[ch.id])}: ${w.message}`)
         }
       }
     }
@@ -214,9 +218,9 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
       if (ch) {
         const w = applyWeaponWear(ch, res.weaponWear.itemId, 'miss')
         if (w.itemId) {
-          onUpdateChar?.(w.char); setLastWear({ kind: 'weapon', charId: ch.id, itemId: w.itemId, prev: w.prev!, text: `${ch.name}: weapon −${w.amount} (miss)` })
+          onUpdateChar?.(w.char); setLastWear({ kind: 'weapon', charId: ch.id, itemId: w.itemId, prev: w.prev!, text: `${withPlayer(ch.name, dir.label[ch.id])}: weapon −${w.amount} (miss)` })
           setEncounter((e) => ({ ...e, log: log(e, `⚔️ ${w.message}`, 'info') }))
-          if (w.message.includes('BROKEN')) onRecap?.('broken', `${ch.name}: ${w.message}`)
+          if (w.message.includes('BROKEN')) onRecap?.('broken', `${withPlayer(ch.name, dir.label[ch.id])}: ${w.message}`)
         }
       }
     }
@@ -256,7 +260,7 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
           {order.length === 0 && <span className="muted small">No initiative yet — tap <b>Roll</b></span>}
           {order.map((c) => (
             <button key={c.id} className={`turn-chip ${c.side} ${c.id === turnId ? 'now' : ''} ${isOut(c) ? 'out' : ''}`} onClick={() => setEditFor(c.id)}>
-              <b>{c.initiative}</b><span>{c.name}</span>
+              <b>{c.initiative}</b><span><WhoName id={c.characterId} name={c.name} /></span>
             </button>
           ))}
         </div>
@@ -271,8 +275,8 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
 
       <div className={'hint ' + (selC ? 'active' : '')}>
         {selC
-          ? <>⚔ <b>{selC.name}</b> is attacking — tap a target <button className="link" onClick={() => setSelected(null)}>cancel</button></>
-          : turnC ? <>It’s <b>{turnC.name}</b>’s turn. Drag their ⚔ onto a target, or tap attacker → tap target.</>
+          ? <>⚔ <b><WhoName id={selC.characterId} name={selC.name} /></b> is attacking — tap a target <button className="link" onClick={() => setSelected(null)}>cancel</button></>
+          : turnC ? <>It’s <b><WhoName id={turnC.characterId} name={turnC.name} /></b>’s turn. Drag their ⚔ onto a target, or tap attacker → tap target.</>
             : <>Drag a card’s ⚔ onto a target (or tap attacker, then target).</>}
       </div>
 
@@ -306,14 +310,14 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
         const o = byId(ghost.over)
         return (
           <div className="drag-ghost" style={{ left: ghost.x, top: ghost.y }}>
-            ⚔ {c.name}{o ? <> → <b>{o.name}</b></> : ''}
+            ⚔ <WhoName id={c.characterId} name={c.name} />{o ? <> → <b><WhoName id={o.characterId} name={o.name} /></b></> : ''}
           </div>
         )
       })()}
 
       {lastWear && (
         <div className="wear-undo">{lastWear.kind === 'weapon' ? '⚔️' : '🛡'} {lastWear.text}
-          <button className="btn sm" onClick={() => { const ch = characters.find((x) => x.id === lastWear.charId); if (ch) { onUpdateChar?.(undoWear(ch, lastWear.itemId, lastWear.prev)); setEncounter((e) => ({ ...e, log: log(e, `↩ ${lastWear.kind === 'weapon' ? 'Weapon' : 'Armor'} wear undone for ${ch.name}`, 'info') })) } setLastWear(null) }}>Undo</button>
+          <button className="btn sm" onClick={() => { const ch = characters.find((x) => x.id === lastWear.charId); if (ch) { onUpdateChar?.(undoWear(ch, lastWear.itemId, lastWear.prev)); setEncounter((e) => ({ ...e, log: log(e, `↩ ${lastWear.kind === 'weapon' ? 'Weapon' : 'Armor'} wear undone for ${withPlayer(ch.name, dir.label[ch.id])}`, 'info') })) } setLastWear(null) }}>Undo</button>
           <button className="icon-btn sm" aria-label="Dismiss" onClick={() => setLastWear(null)}>✕</button></div>
       )}
       {attack && byId(attack.a) && byId(attack.t) && (
@@ -368,7 +372,7 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
             const cs = e.combatants.map((c) => (c.id in map ? { ...c, initiative: map[c.id] } : c))
             const ord = sortedOrder(cs)
             const next = { ...e, combatants: cs, round: 1, turnId: ord[0]?.id ?? null }
-            return { ...next, log: log(next, `Initiative rolled! Order: ${ord.map((c) => `${c.name} (${c.initiative})`).join(', ')}`, 'info') }
+            return { ...next, log: log(next, `Initiative rolled! Order: ${ord.map((c) => `${played(c)} (${c.initiative})`).join(', ')}`, 'info') }
           })
           setInitOpen(false)
         }} />
@@ -408,7 +412,7 @@ function CombatantCard({ c, armorItem, effects = [], portrait, isTurn, isSelecte
         </div>
         {portrait && <Portrait src={portrait} name={c.name} size={34} className="ccard-portrait" />}
         <div className="ccard-name">
-          <b>{c.name}</b>
+          <b><WhoName id={c.characterId} name={c.name} /></b>
           <span className="armor">{c.armor || '—'}</span>
           {armorItem?.tier && <DurBar it={armorItem} small />}
         </div>
@@ -457,6 +461,8 @@ const loadEntryMode = (): 'quick' | 'full' => { try { return localStorage.getIte
 function AttackSheet({ attacker, target, onClose, onApply, caster, targetChar }: {
   attacker: Combatant; target: Combatant; onClose: () => void; onApply: (r: AttackResult) => void; caster?: Character; targetChar?: Character
 }) {
+  const dir = usePlayerDirectory()
+  const who = (c: Combatant) => withPlayer(c.name, c.characterId ? dir.label[c.characterId] : undefined)
   const first: Attack | undefined = attacker.attacks[0]
   const [weapon, setWeapon] = useState(first?.name ?? '')
   const [toHit, setToHit] = useState(first?.toHit ?? 0)
@@ -583,7 +589,7 @@ function AttackSheet({ attacker, target, onClose, onApply, caster, targetChar }:
 
   return (
     <Sheet open onClose={onClose} tall
-      title={<span className="atk-title"><b>{attacker.name}</b> <span className="swords">⚔</span> <b>{target.name}</b></span>}
+      title={<span className="atk-title"><b><WhoName id={attacker.characterId} name={attacker.name} /></b> <span className="swords">⚔</span> <b><WhoName id={target.characterId} name={target.name} /></b></span>}
       footer={spell?.effect === 'resistance' ? (
         <button className="btn big heal-fill" disabled={noSlot} onClick={() => onApply({
           attackerId: attacker.id, targetId: target.id, weapon: spell.name, hit: true, crit: false, type: resType, final: 0, steps: [], rollText: '', ...spellExtra,
@@ -620,7 +626,7 @@ function AttackSheet({ attacker, target, onClose, onApply, caster, targetChar }:
       )}>
       <div className="target-summary">
         <div className="ac-shield lg" style={target.armorTier ? { filter: `drop-shadow(0 0 6px ${TIER_COLORS[target.armorTier]})` } : undefined}><small>AC</small><b>{effAc}</b></div>
-        <div><b>{target.name}</b><div className="muted small">{target.armor || 'no armor listed'} · {target.hp}/{target.maxHp} HP</div></div>
+        <div><b><WhoName id={target.characterId} name={target.name} /></b><div className="muted small">{target.armor || 'no armor listed'} · {target.hp}/{target.maxHp} HP</div></div>
       </div>
 
       {(whet || frost || mirrorW || hasEffect(targetChar, 'mirror') || ironhide > 0 || stoneskin || bonus) && (
@@ -778,7 +784,7 @@ function AttackSheet({ attacker, target, onClose, onApply, caster, targetChar }:
       {!quick && (<>
       {attacker.attacks.length > 0 && (
         <>
-          <div className="mini-label">{attacker.name}’s attacks</div>
+          <div className="mini-label">{who(attacker)}’s attacks</div>
           <div className="chips-row">
             {attacker.attacks.map((a) => (
               <button key={a.id} className={'chip ' + (weapon === a.name ? 'on' : '')} onClick={() => pick(a)}>
@@ -835,9 +841,11 @@ function AttackSheet({ attacker, target, onClose, onApply, caster, targetChar }:
 
 // ---------------- HP sheet ----------------
 function HpSheet({ c, onClose, onApply }: { c: Combatant; onClose: () => void; onApply: (hp: number, text: string, kind: LogEntry['kind']) => void }) {
+  const dir = usePlayerDirectory()
+  const who = withPlayer(c.name, c.characterId ? dir.label[c.characterId] : undefined)
   const [n, setN] = useState(0)
   return (
-    <Sheet open onClose={onClose} title={`${c.name} — Hit Points`}>
+    <Sheet open onClose={onClose} title={<span><WhoName id={c.characterId} name={c.name} /> — Hit Points</span>}>
       <div className="hp-big"><b>{c.hp}</b><span>/ {c.maxHp}</span></div>
       <Stepper value={n} onChange={setN} min={0} max={999} label="Amount" />
       <div className="quick-row">
@@ -845,12 +853,12 @@ function HpSheet({ c, onClose, onApply }: { c: Combatant; onClose: () => void; o
         <button className="chip" onClick={() => setN(0)}>clear</button>
       </div>
       <div className="row">
-        <button className="btn big danger-fill grow" onClick={() => onApply(Math.max(0, c.hp - n), `${c.name} takes ${n} damage (HP ${c.hp}→${Math.max(0, c.hp - n)})`, 'hit')}>− Damage</button>
-        <button className="btn big heal-fill grow" onClick={() => onApply(Math.min(c.maxHp, c.hp + n), `${c.name} heals ${n} (HP ${c.hp}→${Math.min(c.maxHp, c.hp + n)})`, 'heal')}>+ Heal</button>
+        <button className="btn big danger-fill grow" onClick={() => onApply(Math.max(0, c.hp - n), `${who} takes ${n} damage (HP ${c.hp}→${Math.max(0, c.hp - n)})`, 'hit')}>− Damage</button>
+        <button className="btn big heal-fill grow" onClick={() => onApply(Math.min(c.maxHp, c.hp + n), `${who} heals ${n} (HP ${c.hp}→${Math.min(c.maxHp, c.hp + n)})`, 'heal')}>+ Heal</button>
       </div>
       <div className="row">
-        <button className="btn ghost grow" onClick={() => onApply(n, `${c.name} HP set to ${n}`, 'info')}>Set to {n}</button>
-        <button className="btn ghost grow" onClick={() => onApply(c.maxHp, `${c.name} restored to full HP`, 'heal')}>Full HP</button>
+        <button className="btn ghost grow" onClick={() => onApply(n, `${who} HP set to ${n}`, 'info')}>Set to {n}</button>
+        <button className="btn ghost grow" onClick={() => onApply(c.maxHp, `${who} restored to full HP`, 'heal')}>Full HP</button>
       </div>
     </Sheet>
   )
@@ -863,7 +871,7 @@ function EditCombatantSheet({ c, onClose, onSave, onRemove, onDuplicate }: {
   const [d, setD] = useState<Combatant>(c)
   const set = (p: Partial<Combatant>) => setD({ ...d, ...p })
   return (
-    <Sheet open onClose={onClose} tall title={`Edit ${c.name}`}
+    <Sheet open onClose={onClose} tall title={<span>Edit <WhoName id={c.characterId} name={c.name} /></span>}
       footer={<button className="btn big primary" onClick={() => onSave(d)}>Save</button>}>
       <TextField label="Name" value={d.name} onChange={(v) => set({ name: v })} />
       <div className="grid3">
@@ -904,7 +912,7 @@ function AddPartySheet({ characters, combatants, onClose, onAdd }: {
       {characters.length === 0 && <div className="empty">No characters yet. Create them in the <b>Characters</b> tab.</div>}
       {characters.map((ch) => (
         <div key={ch.id} className="list-row">
-          <div><b>{ch.name}</b><div className="muted small">{ch.race} {ch.cls} {ch.level} · AC {ch.ac} · {ch.maxHp} HP</div></div>
+          <div><b><WhoName id={ch.id} name={ch.name} /></b><div className="muted small">{ch.race} {ch.cls} {ch.level} · AC {ch.ac} · {ch.maxHp} HP</div></div>
           {inBattle.has(ch.id) ? <span className="muted small">in battle</span>
             : <button className="btn sm" onClick={() => onAdd([ch])}>Add</button>}
         </div>
@@ -1046,7 +1054,7 @@ function InitiativeSheet({ combatants, onClose, onSave }: {
       <div className="muted small pad">Players rolling their own? Type their totals. Blank boxes get auto-rolled.</div>
       {combatants.map((c) => (
         <div key={c.id} className={'list-row init-row ' + c.side}>
-          <div><b>{c.name}</b><div className="muted small">d20 {fmtMod(c.initMod)}{rolled[c.id] ? ` · rolled ${rolled[c.id]}` : ''}</div></div>
+          <div><b><WhoName id={c.characterId} name={c.name} /></b><div className="muted small">d20 {fmtMod(c.initMod)}{rolled[c.id] ? ` · rolled ${rolled[c.id]}` : ''}</div></div>
           <input inputMode="numeric" className="init-input" value={vals[c.id]} placeholder="—" onChange={(e) => setVals({ ...vals, [c.id]: e.target.value.replace(/[^\d-]/g, '') })} />
         </div>
       ))}

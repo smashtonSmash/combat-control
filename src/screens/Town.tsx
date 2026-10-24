@@ -8,6 +8,8 @@ import { fmtCost } from '../effects'
 import { fromSilver, purseSilver } from '../party'
 import { addItem } from '../inventory'
 import { Stepper } from '../components/Sheet'
+import { WhoName, usePlayerDirectory } from '../components/PlayerName'
+import { withPlayer } from '../playerLabel'
 import type { RecapKind } from '../recap'
 
 export default function Town({ characters, town, onTown, onSave, isDM, onRecap }: {
@@ -25,7 +27,9 @@ export default function Town({ characters, town, onTown, onSave, isDM, onRecap }
   const [merchantId, setMerchantId] = useState(MERCHANTS[0].id)
   const [msg, setMsg] = useState('')
   const [townName, setTownName] = useState('')
+  const dir = usePlayerDirectory()
   const c = characters.find((x) => x.id === charId)
+  const who = c ? withPlayer(c.name, dir.label[c.id]) : ''
   const merchant = merchantById(merchantId) ?? MERCHANTS[0]
   const favor = c ? favorOf(c, merchant.id) : 0
   const face = favorFace(favor)
@@ -36,13 +40,13 @@ export default function Town({ characters, town, onTown, onSave, isDM, onRecap }
     if (!place.hasFountain) return setMsg('No wishing fountain in this town.')
     const silverIn = gold * 10 + silver
     if (silverIn <= 0) return setMsg('Offer some coin.')
-    if (purseSilver(c.purse) < silverIn) return setMsg(`${c.name} doesn’t have that much.`)
+    if (purseSilver(c.purse) < silverIn) return setMsg(`${who} doesn’t have that much.`)
     const result = offerToFountain(town.fountain, silverIn)
     let next: Character = { ...c, purse: fromSilver(purseSilver(c.purse) - silverIn) }
-    let note = `${c.name} offers ${gold}g ${silver}s. The fountain holds ${goldLabelFromSilver(result.state.contributedSilver || 0)}.`
+    let note = `${who} offers ${gold}g ${silver}s. The fountain holds ${goldLabelFromSilver(result.state.contributedSilver || 0)}.`
     if (result.granted && result.rewardNote) {
       next = addItem(next, fountainReward())
-      note = `${c.name} offers ${gold}g ${silver}s. ${result.rewardNote}`
+      note = `${who} offers ${gold}g ${silver}s. ${result.rewardNote}`
       onRecap?.('fountain', note)
     }
     onSave(next)
@@ -102,7 +106,7 @@ export default function Town({ characters, town, onTown, onSave, isDM, onRecap }
               </details>
             )}
             <div className="chips-row wrap">{characters.map((x) => (
-              <button key={x.id} className={'chip ' + (x.id === charId ? 'on' : '')} onClick={() => setCharId(x.id)}>{x.name} <small>{x.purse?.gold ?? 0}g</small></button>
+              <button key={x.id} className={'chip ' + (x.id === charId ? 'on' : '')} onClick={() => setCharId(x.id)}><WhoName id={x.id} name={x.name} /> <small>{x.purse?.gold ?? 0}g</small></button>
             ))}</div>
             <div className="row">
               <Stepper label="Gold" value={gold} min={0} max={9999} onChange={setGold} />

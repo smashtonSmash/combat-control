@@ -117,6 +117,8 @@ export interface Chest { id: string; name: string; items: Item[]; gold: number; 
 export interface Character extends ArmorFields {
   id: string
   name: string
+  /** Real person at the table. Optional. Used offline, and online only when the account has no display name. */
+  playerName?: string
   cls: string
   level: number
   race: string

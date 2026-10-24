@@ -2,6 +2,8 @@ import { useState } from 'react'
 import type { Character, Item } from '../types'
 import { depositItem, fromSilver, purseSilver, transferPurse, withdrawItem, type PartyStash } from '../party'
 import { Stepper } from './Sheet'
+import { WhoName, usePlayerDirectory } from './PlayerName'
+import { withPlayer } from '../playerLabel'
 
 export function PartyPanel({ characters, party, onParty, onSave, canToggle, onRecap }: {
   characters: Character[]
@@ -15,7 +17,9 @@ export function PartyPanel({ characters, party, onParty, onSave, canToggle, onRe
   const [gold, setGold] = useState(0)
   const [silver, setSilver] = useState(0)
   const [msg, setMsg] = useState('')
+  const players = usePlayerDirectory()
   const c = characters.find((x) => x.id === charId)
+  const who = (x: Character) => withPlayer(x.name, players.label[x.id])
   const say = (t: string) => setMsg(t)
   const moveCoins = (dir: 'in' | 'out') => {
     if (!c || !party.shared) return
@@ -30,7 +34,7 @@ export function PartyPanel({ characters, party, onParty, onSave, canToggle, onRe
       onSave({ ...c, purse: r.to })
       onParty({ ...party, gold: r.from.gold, silver: r.from.silver })
     }
-    const text = `${c.name} ${dir === 'in' ? 'puts' : 'takes'} ${gold}g ${silver}s ${dir === 'in' ? 'in' : 'from'} the party pool.`
+    const text = `${who(c)} ${dir === 'in' ? 'puts' : 'takes'} ${gold}g ${silver}s ${dir === 'in' ? 'in' : 'from'} the party pool.`
     say(text); onRecap?.(text)
   }
   const stashItem = (it: Item, dir: 'in' | 'out') => {
@@ -56,9 +60,9 @@ export function PartyPanel({ characters, party, onParty, onSave, canToggle, onRe
             <div className="coin silver"><b>{party.silver}</b><small>Pool silver</small></div>
           </div>
           <div className="chips-row wrap">{characters.map((x) => (
-            <button key={x.id} className={'chip ' + (x.id === charId ? 'on' : '')} onClick={() => setCharId(x.id)}>{x.name}</button>
+            <button key={x.id} className={'chip ' + (x.id === charId ? 'on' : '')} onClick={() => setCharId(x.id)}><WhoName id={x.id} name={x.name} /></button>
           ))}</div>
-          {c && <div className="small muted">{c.name} carries {c.purse?.gold ?? 0}g {c.purse?.silver ?? 0}s · pool total {fromSilver(purseSilver({ gold: party.gold, silver: party.silver })).gold}g</div>}
+          {c && <div className="small muted">{who(c)} carries {c.purse?.gold ?? 0}g {c.purse?.silver ?? 0}s · pool total {fromSilver(purseSilver({ gold: party.gold, silver: party.silver })).gold}g</div>}
           <div className="row">
             <Stepper label="Gold" value={gold} min={0} max={9999} onChange={setGold} />
             <Stepper label="Silver" value={silver} min={0} max={9999} onChange={setSilver} />
@@ -71,11 +75,11 @@ export function PartyPanel({ characters, party, onParty, onSave, canToggle, onRe
           {party.items.length === 0 && <div className="small muted">Nothing in the stash.</div>}
           {party.items.map((it) => (
             <div key={it.id} className="fuse-row"><span>{it.name}{it.qty > 1 ? ` ×${it.qty}` : ''}</span>
-              <button className="btn sm" onClick={() => stashItem(it, 'out')}>Give to {c?.name ?? '…'}</button></div>
+              <button className="btn sm" onClick={() => stashItem(it, 'out')}>Give to {c ? who(c) : '…'}</button></div>
           ))}
           {c && (c.inventory ?? []).length > 0 && (
             <>
-              <div className="mini-label">{c.name}’s pack → stash</div>
+              <div className="mini-label">{who(c)}’s pack → stash</div>
               <div className="chips-row wrap">{(c.inventory ?? []).map((it) => (
                 <button key={it.id} className="chip" onClick={() => stashItem(it, 'in')}>{it.name}</button>
               ))}</div>

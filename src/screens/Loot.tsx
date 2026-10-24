@@ -9,6 +9,8 @@ import { fmtCoins, purseTotal } from '../casino/money'
 import { coinsToSilver, splitEvenly, takeFrom } from '../loot'
 import { LOOT_TABLES, rollLoot, tableById } from '../lootTables'
 import type { RecapKind } from '../recap'
+import { WhoName, usePlayerDirectory } from '../components/PlayerName'
+import { withPlayer } from '../playerLabel'
 
 type Payload = { kind: 'item'; id: string } | { kind: 'pouch'; id: string }
 
@@ -34,6 +36,7 @@ export default function Loot({ chests, saveChest, deleteChest, characters, onGiv
   const [splitOpen, setSplitOpen] = useState(false)
   const [msg, setMsg] = useState('')
   const [tableId, setTableId] = useState(LOOT_TABLES[0].id)
+  const dir = usePlayerDirectory()
 
   // ---- drag (same pointer-event style as Battle) ----
   const drag = useRef<{ p: Payload; x0: number; y0: number; active: boolean } | null>(null)
@@ -73,7 +76,8 @@ export default function Loot({ chests, saveChest, deleteChest, characters, onGiv
   const drop = (p: Payload, charId: string) => {
     if (!chest) return
     setArmed(null)
-    const who = characters.find((c) => c.id === charId)?.name ?? 'them'
+    const hero = characters.find((c) => c.id === charId)
+    const who = hero ? withPlayer(hero.name, dir.label[hero.id]) : 'them'
     if (p.kind === 'pouch') {
       const q = chest.pouches?.find((x) => x.id === p.id)
       if (!q) return
@@ -161,7 +165,7 @@ export default function Loot({ chests, saveChest, deleteChest, characters, onGiv
             {characters.map((c) => (
               <button key={c.id} data-charid={c.id} className={'drop-target ' + (ghost?.over === c.id ? 'over' : '') + (armed ? ' armed' : '')}
                 onClick={() => armed && drop(armed, c.id)}>
-                <b>{c.name}</b>
+                <b><WhoName id={c.id} name={c.name} /></b>
                 <small>🛡 {c.armor || '—'} · AC {c.ac}</small>
                 <small>💰 {fmtCoins(purseTotal(c.purse))} · 🎒 {(c.inventory ?? []).length}</small>
               </button>
@@ -169,7 +173,7 @@ export default function Loot({ chests, saveChest, deleteChest, characters, onGiv
           </div>
         </>
       )}
-      {ghost && <div className="drag-ghost" style={{ left: ghost.x, top: ghost.y }}>{ghost.label}{ghost.over ? <> → <b>{characters.find((c) => c.id === ghost.over)?.name}</b></> : ''}</div>}
+      {ghost && <div className="drag-ghost" style={{ left: ghost.x, top: ghost.y }}>{ghost.label}{ghost.over ? <> → <b>{(() => { const h = characters.find((c) => c.id === ghost.over); return h ? <WhoName id={h.id} name={h.name} /> : null })()}</b></> : ''}</div>}
       {pouchOpen && chest && (
         <PouchSheet chest={chest} onClose={() => setPouchOpen(false)} onCreate={(g, sv) => {
           const left = takeFrom(chest, g, sv)
@@ -183,7 +187,7 @@ export default function Loot({ chests, saveChest, deleteChest, characters, onGiv
           const r = splitEvenly(chest.gold, chest.silver, ids.length, leftoverTo)
           ids.forEach((id, i) => onGiveCoins(id, r.shares[i].gold, r.shares[i].silver))
           saveChest({ ...chest, ...r.chest, updated: Date.now(), lastGiven: { text: `Coins split among ${ids.length}`, at: Date.now() } })
-          setMsg(`⚖ Split ${chest.gold}g ${chest.silver}s among ${ids.length}${r.leftover ? ` (${r.leftover}s leftover → ${leftoverTo === 'chest' ? 'chest' : characters.find((c) => c.id === ids[0])?.name})` : ''}`)
+          setMsg(`⚖ Split ${chest.gold}g ${chest.silver}s among ${ids.length}${r.leftover ? ` (${r.leftover}s leftover → ${leftoverTo === 'chest' ? 'chest' : (() => { const h = characters.find((c) => c.id === ids[0]); return h ? withPlayer(h.name, dir.label[h.id]) : 'first' })()})` : ''}`)
           setSplitOpen(false)
         }} />
       )}
@@ -257,19 +261,19 @@ function SplitSheet({ chest, characters, onClose, onConfirm }: {
       <div className="small muted">Splitting <b>{chest.gold}g {chest.silver}s</b> ({coinsToSilver(chest.gold, chest.silver)}s). Shares are paid in gold + silver.</div>
       <div className="mini-label">Who gets a share?</div>
       <div className="chips-row wrap">
-        {characters.map((c) => <button key={c.id} className={'chip ' + (ids.includes(c.id) ? 'on' : '')} onClick={() => setIds(ids.includes(c.id) ? ids.filter((x) => x !== c.id) : [...ids, c.id])}>{ids.includes(c.id) ? '✓ ' : ''}{c.name}</button>)}
+        {characters.map((c) => <button key={c.id} className={'chip ' + (ids.includes(c.id) ? 'on' : '')} onClick={() => setIds(ids.includes(c.id) ? ids.filter((x) => x !== c.id) : [...ids, c.id])}>{ids.includes(c.id) ? '✓ ' : ''}<WhoName id={c.id} name={c.name} /></button>)}
       </div>
       {r.leftover > 0 && (
         <>
           <div className="mini-label">{r.leftover}s doesn’t split evenly — give it to…</div>
           <div className="segmented">
             <button type="button" className={to === 'chest' ? 'on' : ''} onClick={() => setTo('chest')}>Keep in chest</button>
-            <button type="button" className={to === 'first' ? 'on' : ''} onClick={() => setTo('first')}>{chosen[0]?.name ?? 'First'}</button>
+            <button type="button" className={to === 'first' ? 'on' : ''} onClick={() => setTo('first')}>{chosen[0] ? <WhoName id={chosen[0].id} name={chosen[0].name} /> : 'First'}</button>
           </div>
         </>
       )}
       <div className="panel">
-        {chosen.map((c, i) => <div key={c.id} className="row between"><span>{c.name}</span><b>{fmtCoins(r.shares[i].gold * 10 + r.shares[i].silver)}</b></div>)}
+        {chosen.map((c, i) => <div key={c.id} className="row between"><span><WhoName id={c.id} name={c.name} /></span><b>{fmtCoins(r.shares[i].gold * 10 + r.shares[i].silver)}</b></div>)}
         {to === 'chest' && r.leftover > 0 && <div className="row between muted"><span>Back to chest</span><span>{r.leftover}s</span></div>}
       </div>
     </Sheet>

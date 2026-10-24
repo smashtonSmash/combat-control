@@ -3,6 +3,7 @@ import type { Character } from '../types'
 import { fmtCoins, purseTotal, toSilver } from '../casino/money'
 import * as BJ from '../casino/blackjack'
 import { WHEEL_ORDER, betLabel, colorOf, oddsOf, settle, spinNumber, type BetKey } from '../casino/roulette'
+import { WhoName } from '../components/PlayerName'
 
 /** Change a character's coins by `delta` silver. Returns false if they can't afford it. */
 export type Adjust = (charId: string, delta: number, note: string) => boolean
@@ -32,12 +33,12 @@ export default function Casino({ characters, adjust }: { characters: Character[]
           <div className="chips-row wrap">
             {characters.map((c) => (
               <button key={c.id} className={'chip ' + (c.id === player.id ? 'on' : '')} onClick={() => setCharId(c.id)}>
-                {c.name} <small>💰 {fmtCoins(purseTotal(c.purse))}</small>
+                <WhoName id={c.id} name={c.name} /> <small>💰 {fmtCoins(purseTotal(c.purse))}</small>
               </button>
             ))}
           </div>
           <div className="purse-bar">
-            <span>💰 <b>{player.name}</b></span>
+            <span>💰 <b><WhoName id={player.id} name={player.name} /></b></span>
             <span className="coin-pill gold">{player.purse?.gold ?? 0} g</span>
             <span className="coin-pill silver">{player.purse?.silver ?? 0} s</span>
           </div>

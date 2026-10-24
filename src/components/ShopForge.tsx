@@ -12,6 +12,7 @@ import { favorAdjust, favorFace, favorOf, MERCHANTS, merchantById, clampFavor } 
 import type { RecapKind } from '../recap'
 import { ConsumablePicker } from './Items'
 import { Segmented, Stepper } from './Sheet'
+import { WhoName } from './PlayerName'
 
 /** DM-run Shop (sell catalog items to a character) and Blacksmith (fuse two matching armors + fee → next tier). */
 export function ShopForge({ characters, onSave, onRecap }: { characters: Character[]; onSave: (c: Character) => void; onRecap?: (kind: RecapKind, text: string) => void }) {
@@ -47,7 +48,7 @@ export function ShopForge({ characters, onSave, onRecap }: { characters: Charact
       <div className="row between"><b>🏪 Shop & Forge</b><span className="small muted">DM</span></div>
       <Segmented value={tab} onChange={(v) => { setTab(v); setMsg('') }} options={[{ value: 'shop', label: '🛒 Shop' }, { value: 'forge', label: '🔨 Blacksmith' }]} />
       <div className="chips-row wrap">{characters.map((x) => (
-        <button key={x.id} className={'chip ' + (x.id === charId ? 'on' : '')} onClick={() => { setCharId(x.id); setMsg('') }}>{x.name} <small>{x.purse?.gold ?? 0}g {x.purse?.silver ?? 0}s</small></button>
+        <button key={x.id} className={'chip ' + (x.id === charId ? 'on' : '')} onClick={() => { setCharId(x.id); setMsg('') }}><WhoName id={x.id} name={x.name} /> <small>{x.purse?.gold ?? 0}g {x.purse?.silver ?? 0}s</small></button>
       ))}</div>
       {msg && <div className="inv-msg">{msg}</div>}
       {c && tab === 'shop' && (
