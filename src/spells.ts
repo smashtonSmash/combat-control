@@ -43,6 +43,7 @@ export const CASTER_CLASSES: Record<string, { kind: 'full' | 'half' | 'pact'; ab
   wizard: { kind: 'full', ability: 'int' }, sorcerer: { kind: 'full', ability: 'cha' }, cleric: { kind: 'full', ability: 'wis' },
   druid: { kind: 'full', ability: 'wis' }, bard: { kind: 'full', ability: 'cha' }, warlock: { kind: 'pact', ability: 'cha' },
   paladin: { kind: 'half', ability: 'cha' }, ranger: { kind: 'half', ability: 'wis' },
+  artificer: { kind: 'half', ability: 'int' },
 }
 export const casterInfo = (cls: string) => {
   const k = Object.keys(CASTER_CLASSES).find((x) => cls.toLowerCase().includes(x))
@@ -64,12 +65,19 @@ const PACT: [number, number][] = [
   [1, 1], [2, 1], [2, 2], [2, 2], [2, 3], [2, 3], [2, 4], [2, 4], [2, 5], [2, 5], [3, 5], [3, 5], [3, 5], [3, 5], [3, 5], [3, 5], [4, 5], [4, 5], [4, 5], [4, 5],
 ]
 const pad = (a: number[]) => Array.from({ length: 9 }, (_, i) => a[i] ?? 0)
+/** Artificer is a half caster that rounds up, so 1st level already has two 1st-level slots. */
+const ARTIFICER: number[][] = [
+  [2], [2], [3], [3], [4, 2], [4, 2], [4, 3], [4, 3], [4, 3, 2], [4, 3, 2],
+  [4, 3, 3], [4, 3, 3], [4, 3, 3, 1], [4, 3, 3, 1], [4, 3, 3, 2], [4, 3, 3, 2],
+  [4, 3, 3, 3, 1], [4, 3, 3, 3, 1], [4, 3, 3, 3, 2], [4, 3, 3, 3, 2],
+]
 
 export function slotsFor(cls: string, level: number): Slots {
   const info = casterInfo(cls)
   const L = Math.min(20, Math.max(1, level)) - 1
   if (!info) return { max: pad([]), used: pad([]) }
   if (info.kind === 'pact') { const [n, lv] = PACT[L]; const m = pad([]); m[lv - 1] = n; return { max: m, used: pad([]), pact: true } }
+  if (info.cls === 'artificer') return { max: pad(ARTIFICER[L]), used: pad([]) }
   return { max: pad((info.kind === 'full' ? FULL : HALF)[L]), used: pad([]) }
 }
 

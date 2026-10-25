@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyBonuses, bgBudget, chooseBackground, chooseClass, chooseRace, raceBudget, suggestedHp, validBonus } from './origins'
+import { applyBonuses, bgBudget, chooseBackground, chooseClass, chooseRace, classSkillPicks, raceBudget, suggestedHp, toggleSkill, validBonus } from './origins'
 import type { Character } from './types'
 const blank = (): Character => ({ id: 'x', name: 'T', cls: '', level: 1, race: '', abilities: { str: 10, dex: 14, con: 12, int: 15, wis: 10, cha: 8 }, ac: 10, armor: '', maxHp: 10, initMod: 0, traits: [], attacks: [], notes: '' })
 
@@ -25,4 +25,30 @@ describe('origins', () => {
     expect(bgBudget(chooseBackground(c, 'custom'), 3)).toEqual({ total: 3, maxEach: 2 })
   })
   it('old characters keep their scores', () => { const c = applyBonuses(blank()); expect(c.abilities).toEqual(blank().abilities) })
+  it('goblin bonuses, opt-out, artificer picks, and charlatan', () => {
+    let c = chooseRace(blank(), 'goblin')
+    expect(c.race).toBe('Goblin')
+    expect(c.abilities.dex).toBe(16)
+    expect(c.abilities.con).toBe(13)
+    expect(c.features!.some((f) => f.source === 'race' && f.name.length > 0)).toBe(true)
+    c = applyBonuses({ ...c, origin: { ...c.origin, noStandardBonus: true } })
+    expect(c.abilities.dex).toBe(14)
+    expect(c.abilities.con).toBe(12)
+    expect(raceBudget(c, 3)).toEqual({ total: 3, maxEach: 2 })
+    c = chooseClass(blank(), 'artificer')
+    expect(c.cls).toBe('Artificer')
+    expect(c.hitDie).toBe(8)
+    expect(c.saves).toEqual(['con', 'int'])
+    expect(c.origin?.skillChoice?.choose).toBe(2)
+    expect(c.features!.some((f) => f.name === 'Magical Tinkering')).toBe(true)
+    c = chooseBackground(c, 'charlatan')
+    expect(c.background).toBe('Charlatan')
+    expect(c.skills).toEqual(expect.arrayContaining(['Deception', 'Sleight of Hand']))
+    expect(c.features!.some((f) => f.name === 'False Identity')).toBe(true)
+    c = chooseClass(chooseBackground(blank(), 'sage'), 'artificer')
+    expect(classSkillPicks(c)).toEqual([])
+    c = toggleSkill(toggleSkill(c, 'Investigation'), 'Medicine')
+    expect(classSkillPicks(c)).toEqual(['Investigation', 'Medicine'])
+    expect(toggleSkill(c, 'Nature').skills).toEqual(c.skills)
+  })
 })

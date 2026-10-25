@@ -5,6 +5,9 @@ import type { Character, Chest, Encounter } from './types'
 import type { PartyStash } from './party'
 import type { TownState } from './fountain'
 import type { RecapEvent } from './recap'
+import type { SavedOrigin } from './origins'
+import type { SharedNote } from './notes'
+import type { CasinoTable, TableAction } from './casino/table'
 import { migrateTiers } from './armor'
 import { migrateChestItems, migrateInventory } from './catalog'
 const normEnc = (e: Encounter | null) => (e ? { ...e, combatants: (e.combatants ?? []).map((c) => migrateInventory(migrateTiers(c))) } : e)
@@ -26,7 +29,16 @@ export function useSession() {
   return { session, ready }
 }
 
-export interface CampaignInfo { id: string; name: string; join_code: string; role: 'dm' | 'player'; dm_id: string; settings?: { originBudget?: number; allowReroll?: boolean; homebrew?: { party?: PartyStash; town?: TownState; recap?: RecapEvent[] } } }
+export interface HomebrewSettings {
+  party?: PartyStash
+  town?: TownState
+  recap?: RecapEvent[]
+  library?: SavedOrigin[]
+  notes?: SharedNote
+  casino?: CasinoTable
+  casinoInbox?: TableAction[]
+}
+export interface CampaignInfo { id: string; name: string; join_code: string; role: 'dm' | 'player'; dm_id: string; settings?: { originBudget?: number; allowReroll?: boolean; homebrew?: HomebrewSettings } }
 export interface MemberInfo { user_id: string; role: 'dm' | 'player'; display_name: string }
 
 export async function listCampaigns(userId: string): Promise<CampaignInfo[]> {

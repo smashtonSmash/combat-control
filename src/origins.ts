@@ -1,4 +1,5 @@
 import srd from './data/srd.json'
+import { EXPANDED_BACKGROUNDS, EXPANDED_CLASSES, EXPANDED_RACES } from './data/expandedOrigins'
 import type { Abilities, Character } from './types'
 import { uid } from './types'
 
@@ -12,29 +13,18 @@ export interface RaceDef { key: string; name: string; srd: boolean; speed?: numb
 export interface ClassDef { key: string; name: string; srd: boolean; hitDie: number; saves: AbilKey[]; proficiencies: string[]; skillChoice?: { choose: number; from: string[] }; features: { name: string; desc: string }[]; spellcasting?: string }
 export interface BgDef { key: string; name: string; srd: boolean; skills: string[]; feature?: { name: string; desc: string } }
 
-/* SRD data (bundled). Non-SRD entries are names + game facts only (no book text); their traits are left for the player to fill in. */
-const NON_SRD_RACES = ['Aarakocra', 'Aasimar', 'Bugbear', 'Centaur', 'Changeling', 'Firbolg', 'Genasi', 'Gith', 'Goblin', 'Goliath', 'Hobgoblin', 'Kenku', 'Kobold', 'Lizardfolk', 'Minotaur', 'Orc', 'Satyr', 'Shifter', 'Tabaxi', 'Tortle', 'Triton', 'Warforged', 'Yuan-ti']
-const NON_SRD_CLASSES: Omit<ClassDef, 'srd' | 'features' | 'proficiencies'>[] = [{ key: 'artificer', name: 'Artificer', hitDie: 8, saves: ['con', 'int'] }]
-const NON_SRD_BGS: [string, string[]][] = [
-  ['Charlatan', ['Deception', 'Sleight of Hand']], ['Criminal', ['Deception', 'Stealth']], ['Entertainer', ['Acrobatics', 'Performance']],
-  ['Folk Hero', ['Animal Handling', 'Survival']], ['Guild Artisan', ['Insight', 'Persuasion']], ['Hermit', ['Medicine', 'Religion']],
-  ['Noble', ['History', 'Persuasion']], ['Outlander', ['Athletics', 'Survival']], ['Sage', ['Arcana', 'History']], ['Sailor', ['Athletics', 'Perception']],
-  ['Soldier', ['Athletics', 'Intimidation']], ['Urchin', ['Sleight of Hand', 'Stealth']], ['Far Traveler', ['Insight', 'Perception']],
-  ['Haunted One', ['Investigation', 'Survival']], ['City Watch', ['Athletics', 'Insight']], ['Clan Crafter', ['History', 'Insight']],
-]
-const slug = (s: string) => s.toLowerCase().replace(/[^a-z]+/g, '-')
-
+/* SRD 5.1 is bundled. Other ancestries, Artificer, and the common backgrounds carry standard bonuses and short trait summaries (src/data/expandedOrigins.ts). */
 export const RACES: RaceDef[] = [
   ...srd.races.map((r) => ({ ...r, srd: true, bonuses: r.bonuses as Bonus, subraces: r.subraces.map((s) => ({ ...s, bonuses: s.bonuses as Bonus })) })),
-  ...NON_SRD_RACES.map((n) => ({ key: slug(n), name: n, srd: false, traits: [] })),
+  ...EXPANDED_RACES.map((r) => ({ ...r, srd: false, bonuses: r.bonuses as Bonus, subraces: r.subraces?.map((s) => ({ ...s, bonuses: s.bonuses as Bonus })) })),
 ].sort((a, b) => a.name.localeCompare(b.name))
 export const CLASSES: ClassDef[] = [
   ...srd.classes.map((c) => ({ ...c, srd: true, saves: c.saves as AbilKey[] })),
-  ...NON_SRD_CLASSES.map((c) => ({ ...c, srd: false, features: [], proficiencies: [] })),
+  ...EXPANDED_CLASSES.map((c) => ({ ...c, srd: false, saves: c.saves as AbilKey[] })),
 ].sort((a, b) => a.name.localeCompare(b.name))
 export const BACKGROUNDS: BgDef[] = [
   ...srd.backgrounds.map((b) => ({ ...b, srd: true })),
-  ...NON_SRD_BGS.map(([n, skills]) => ({ key: slug(n), name: n, srd: false, skills })),
+  ...EXPANDED_BACKGROUNDS.map((b) => ({ ...b, srd: false })),
 ].sort((a, b) => a.name.localeCompare(b.name))
 
 export const SKILLS: [string, AbilKey][] = [
@@ -47,10 +37,11 @@ export const raceDef = (k?: string) => RACES.find((r) => r.key === k)
 export const classDef = (k?: string) => CLASSES.find((c) => c.key === k)
 export const bgDef = (k?: string) => BACKGROUNDS.find((b) => b.key === k)
 
-/** Bonuses granted by an SRD race (+ subrace). Flexible picks (e.g. Half-Elf, non-SRD, Custom) come from origin.raceBonus. */
+/** Bonuses printed on the ancestry (+ subrace). Opting out, or a saved/custom ancestry, leaves these at 0 so the player allocates instead. */
 export function fixedRaceBonus(c: Character): Bonus {
+  if (c.origin?.noStandardBonus) return {}
   const r = raceDef(c.origin?.raceKey)
-  if (!r?.srd) return {}
+  if (!r) return {}
   const sub = r.subraces?.find((s) => s.key === c.origin?.subraceKey)
   const out: Bonus = { ...r.bonuses }
   for (const [k, v] of Object.entries(sub?.bonuses ?? {})) out[k as AbilKey] = (out[k as AbilKey] ?? 0) + (v ?? 0)
@@ -60,9 +51,14 @@ export function fixedRaceBonus(c: Character): Bonus {
 export function raceBudget(c: Character, customBudget: number): { total: number; maxEach: number; amount?: number } | null {
   const k = c.origin?.raceKey
   if (!k) return null
+  if (c.origin?.noStandardBonus || k === 'custom') return { total: customBudget, maxEach: 2 }
+  if (k.startsWith('lib:')) return null
   const r = raceDef(k)
-  if (r?.srd) return r.bonusChoice ? { total: r.bonusChoice.choose, maxEach: 1 } : null
-  return { total: customBudget, maxEach: 2 } // custom or non-SRD: flexible origin
+  if (!r) return { total: customBudget, maxEach: 2 }
+  if (r.bonusChoice) return { total: r.bonusChoice.choose, maxEach: 1 }
+  if (r.srd) return null
+  const hasFixed = Object.keys(r.bonuses ?? {}).length > 0 || !!r.subraces?.some((s) => Object.keys(s.bonuses).length > 0)
+  return hasFixed ? null : { total: customBudget, maxEach: 2 }
 }
 export function bgBudget(c: Character, customBudget: number) {
   return c.origin?.bgKey === 'custom' ? { total: customBudget, maxEach: 2 } : null
@@ -101,9 +97,10 @@ export function chooseRace(c: Character, key: string, subKey?: string): Characte
 }
 export function chooseClass(c: Character, key: string): Character {
   const k = classDef(key)
-  if (!k) return { ...c, origin: { ...c.origin, classKey: key }, cls: key === 'custom' ? (c.origin?.classKey === 'custom' ? c.cls : '') : c.cls }
-  return { ...c, cls: k.name, origin: { ...c.origin, classKey: key }, hitDie: k.hitDie, saves: k.saves, proficiencies: k.proficiencies,
-    skills: (c.skills ?? []).filter((s) => !k.skillChoice || k.skillChoice.from.includes(s) || bgDef(c.origin?.bgKey)?.skills.includes(s)),
+  if (!k) return { ...c, origin: { ...c.origin, classKey: key, skillChoice: undefined }, cls: key === 'custom' ? (c.origin?.classKey === 'custom' ? c.cls : '') : c.cls }
+  const bgSkills = bgDef(c.origin?.bgKey)?.skills ?? []
+  return { ...c, cls: k.name, origin: { ...c.origin, classKey: key, skillChoice: k.skillChoice }, hitDie: k.hitDie, saves: k.saves, proficiencies: k.proficiencies,
+    skills: (c.skills ?? []).filter((s) => bgSkills.includes(s) || !k.skillChoice || k.skillChoice.from.includes(s)),
     features: swapFeatures(c, 'class', k.features.map((f) => feat(f, 'class'))) }
 }
 export function chooseBackground(c: Character, key: string): Character {
@@ -121,6 +118,88 @@ export function suggestedHp(c: Character): number | null {
   const lv = Math.max(1, c.level || 1)
   return Math.max(1, c.hitDie + conMod(c) + (lv - 1) * (c.hitDie / 2 + 1 + conMod(c)))
 }
+export function skillChoiceOf(c: Character) {
+  return c.origin?.skillChoice ?? classDef(c.origin?.classKey)?.skillChoice
+}
+/** Class-list skills the player picked, not counting the ones their background already gave them. */
+export function classSkillPicks(c: Character): string[] {
+  const choice = skillChoiceOf(c)
+  const bg = bgDef(c.origin?.bgKey)?.skills ?? []
+  if (!choice) return []
+  return (c.skills ?? []).filter((s) => choice.from.includes(s) && !bg.includes(s))
+}
+/** Toggle a skill. Class-list picks stay capped at N. Background skills can be edited too. Saves are not skills. */
+export function toggleSkill(c: Character, skill: string): Character {
+  const on = (c.skills ?? []).includes(skill)
+  const choice = skillChoiceOf(c)
+  const bg = bgDef(c.origin?.bgKey)?.skills ?? []
+  if (!on && choice && choice.from.includes(skill) && !bg.includes(skill) && classSkillPicks(c).length >= choice.choose) return c
+  const skills = on ? (c.skills ?? []).filter((s) => s !== skill) : [...(c.skills ?? []), skill]
+  return { ...c, skills }
+}
+
+export interface SavedOrigin {
+  id: string
+  kind: 'race' | 'class' | 'background'
+  name: string
+  speed?: number
+  bonuses?: Bonus
+  traits?: { name: string; desc: string }[]
+  hitDie?: number
+  saves?: AbilKey[]
+  proficiencies?: string[]
+  skillChoice?: { choose: number; from: string[] }
+  features?: { name: string; desc: string }[]
+  spellcasting?: string
+  skills?: string[]
+  feature?: { name: string; desc: string }
+}
+
+export function captureOrigin(c: Character, kind: SavedOrigin['kind']): SavedOrigin | null {
+  if (kind === 'race') {
+    const name = c.race.trim()
+    if (!name) return null
+    const traits = (c.features ?? []).filter((f) => f.source === 'race').map((f) => ({ name: f.name, desc: f.desc }))
+    return { id: uid(), kind, name, speed: c.speed, bonuses: { ...(c.origin?.raceBonus ?? {}) }, traits }
+  }
+  if (kind === 'class') {
+    const name = c.cls.trim()
+    if (!name) return null
+    const features = (c.features ?? []).filter((f) => f.source === 'class').map((f) => ({ name: f.name, desc: f.desc }))
+    return { id: uid(), kind, name, hitDie: c.hitDie, saves: c.saves, proficiencies: c.proficiencies, skillChoice: skillChoiceOf(c), features }
+  }
+  const name = (c.background ?? '').trim()
+  if (!name) return null
+  const featRow = (c.features ?? []).find((f) => f.source === 'background')
+  const bg = bgDef(c.origin?.bgKey)
+  return { id: uid(), kind, name, skills: bg?.skills ?? [], feature: featRow ? { name: featRow.name, desc: featRow.desc } : undefined }
+}
+
+export function applySavedOrigin(c: Character, entry: SavedOrigin): Character {
+  if (entry.kind === 'race') {
+    const n: Character = {
+      ...c, race: entry.name, speed: entry.speed ?? c.speed ?? 30,
+      origin: { ...c.origin, raceKey: 'lib:' + entry.id, subraceKey: undefined, raceBonus: { ...(entry.bonuses ?? {}) } },
+      features: swapFeatures(c, 'race', (entry.traits ?? []).map((t) => feat(t, 'race'))),
+    }
+    return applyBonuses(n)
+  }
+  if (entry.kind === 'class') {
+    return {
+      ...c, cls: entry.name, hitDie: entry.hitDie, saves: entry.saves, proficiencies: entry.proficiencies,
+      origin: { ...c.origin, classKey: 'lib:' + entry.id, skillChoice: entry.skillChoice },
+      features: swapFeatures(c, 'class', (entry.features ?? []).map((f) => feat(f, 'class'))),
+    }
+  }
+  const old = bgDef(c.origin?.bgKey)
+  const skills = [...new Set([...(c.skills ?? []).filter((s) => !old?.skills.includes(s)), ...(entry.skills ?? [])])]
+  return applyBonuses({
+    ...c, background: entry.name, skills,
+    origin: { ...c.origin, bgKey: 'lib:' + entry.id, bgBonus: {} },
+    features: swapFeatures(c, 'background', entry.feature ? [feat(entry.feature, 'background')] : []),
+  })
+}
+
 export const skillMod = (c: Character, skill: string, prof: number) => {
   const ab = SKILLS.find((s) => s[0] === skill)?.[1] ?? 'str'
   return Math.floor((c.abilities[ab] - 10) / 2) + ((c.skills ?? []).includes(skill) ? prof : 0)

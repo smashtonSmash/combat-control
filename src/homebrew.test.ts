@@ -3,7 +3,7 @@ import type { Character } from './types'
 import { shopPriceSilver } from './catalog'
 import { applyTierKit, applyWeaponWear, craftRepairKit, salvageArmor } from './effects'
 import { carryCapacity, itemSlots, slotsUsed } from './encumbrance'
-import { favorAdjust, favorFace, MERCHANTS } from './favor'
+import { favorAdjust, favorFace, MERCHANTS, REFUSE_FAVOR, refusesToSell } from './favor'
 import { FOUNTAIN_THRESHOLDS, offerToFountain, pickThreshold } from './fountain'
 import { addItem, armorItem, equip, potionOfHealing } from './inventory'
 import { catalogItem, catalogToItem } from './catalog'
@@ -128,8 +128,13 @@ describe('favor discount', () => {
     expect(favorAdjust(0, bram)).toBe(bram.baseAdjust)
     expect(favorAdjust(100, bram)).toBe(bram.baseAdjust - 20)
     expect(favorAdjust(100, bram)).toBeLessThan(favorAdjust(0, bram))
-    expect(favorFace(0).label).toBe('sour')
+    expect(favorFace(0).label).toBe('neutral')
     expect(favorFace(100).label).toBe('delighted')
+    expect(favorFace(-100).label).toBe('refuses')
+    expect(refusesToSell(REFUSE_FAVOR)).toBe(true)
+    expect(refusesToSell(REFUSE_FAVOR + 1)).toBe(false)
+    expect(refusesToSell(-80)).toBe(true)
+    expect(favorAdjust(-40, bram)).toBeGreaterThan(favorAdjust(0, bram))
     expect(shopPriceSilver(10, favorAdjust(100, bram))).toBeLessThan(shopPriceSilver(10, favorAdjust(0, bram)))
   })
 })

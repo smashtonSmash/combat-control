@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState, type ReactNode } from 'react'
+import type { SharedNote } from '../notes'
 import type { Category, WikiPage } from '../types'
 import { CATEGORIES, uid } from '../types'
 import { Sheet } from '../components/Sheet'
@@ -37,7 +38,17 @@ function Markdown({ text, open }: { text: string; open: (t: string) => void }) {
   return <div className="md">{blocks.map((b, i) => <Fragment key={i}>{b}</Fragment>)}</div>
 }
 
-export default function Campaign({ pages, setPages }: { pages: WikiPage[]; setPages: (f: (p: WikiPage[]) => WikiPage[]) => void }) {
+export default function Campaign({ pages, setPages, note, onSaveNote, author = 'You' }: {
+  pages: WikiPage[]
+  setPages: (f: (p: WikiPage[]) => WikiPage[]) => void
+  note?: SharedNote
+  onSaveNote?: (n: SharedNote) => void
+  author?: string
+}) {
+  const stamp = note?.at ?? 0
+  const [seen, setSeen] = useState(stamp)
+  const [pad, setPad] = useState(note?.body ?? '')
+  if (stamp !== seen) { setSeen(stamp); setPad(note?.body ?? '') }
   const [q, setQ] = useState('')
   const [cat, setCat] = useState<Category | 'All'>('All')
   const [viewId, setViewId] = useState<string | null>(null)
@@ -64,6 +75,17 @@ export default function Campaign({ pages, setPages }: { pages: WikiPage[]; setPa
       <div className="screen-head">
         <h1>Campaign</h1>
         <button className="btn primary" onClick={() => setDraft({ id: uid(), title: '', category: 'NPC', body: '', updated: Date.now() })}>＋ Page</button>
+      </div>
+      <div className="panel shared-notes">
+        <div className="row between">
+          <b>Shared notes</b>
+          {note?.at
+            ? <span className="small muted">{note.author || 'Someone'} · {new Date(note.at).toLocaleString()}</span>
+            : <span className="small muted">Everyone can edit</span>}
+        </div>
+        <p className="small muted">One pad for the table. Saving stamps who wrote it. The wiki pages below stay separate.</p>
+        <textarea rows={6} value={pad} onChange={(e) => setPad(e.target.value)} placeholder="What the table needs to remember…" aria-label="Shared notes" />
+        <button className="btn sm primary" disabled={!onSaveNote || pad === (note?.body ?? '')} onClick={() => onSaveNote?.({ body: pad, author, at: Date.now() })}>Save notes</button>
       </div>
       <input className="search" placeholder="🔍 Search notes…" value={q} onChange={(e) => setQ(e.target.value)} />
       <div className="chips-row">

@@ -15,7 +15,14 @@ export const TIER_SHORT: Record<Tier, string> = { green: 'Common', blue: 'Rare',
 /** Outside the fuse ladder. Pink is a unique-ability tag, not a power step above Mythic. Black is a named mythic with a will of its own. */
 export const SPECIAL_RARITIES = ['pink', 'black'] as const
 export const SPECIAL_COLORS: Record<SpecialRarity, string> = { pink: '#e45aaa', black: '#d5d5de' }
-export const SPECIAL_LABELS: Record<SpecialRarity, string> = { pink: 'Pink', black: 'Black Mythic' }
+export const SPECIAL_LABELS: Record<SpecialRarity, string> = { pink: 'Special', black: 'Named Mythic' }
+
+/** Custom item / weapon rarity. Ids and colors match the gear already in the app. */
+export const RARITY_OPTIONS: { id: string; label: string; color: string; tier?: Tier; special?: SpecialRarity }[] = [
+  ...TIERS.map((t) => ({ id: t, label: TIER_SHORT[t], color: TIER_COLORS[t], tier: t })),
+  { id: 'black', label: SPECIAL_LABELS.black, color: SPECIAL_COLORS.black, special: 'black' },
+  { id: 'pink', label: SPECIAL_LABELS.pink, color: SPECIAL_COLORS.pink, special: 'pink' },
+]
 
 export function itemRarity(it: { tier?: Tier; special?: SpecialRarity }): { label: string; color: string } | null {
   if (it.special) return { label: SPECIAL_LABELS[it.special], color: SPECIAL_COLORS[it.special] }

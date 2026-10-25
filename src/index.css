@@ -101,8 +101,9 @@ h1, h2, h3, h4 { font-family: var(--serif); color: var(--gold2); letter-spacing:
 .turn-chip.monster b { color: #f2a090; box-shadow: inset 0 0 0 2px var(--monster); }
 .turn-chip.now { background: linear-gradient(180deg, var(--gold2), var(--gold)); color: #24190a; border-color: #f7e2a7; transform: scale(1.06); box-shadow: 0 0 18px rgba(217,180,90,.5); }
 .turn-chip.out { opacity: .4; text-decoration: line-through; }
-.battle-actions { display: flex; gap: 8px; margin: 8px 0; }
-.battle-actions .btn { flex: 1; }
+.battle-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.battle-actions .btn { flex: 1 1 140px; }
+.battle-actions .rest-btn { flex: 1 1 128px; }
 .hint { font-size: 12.5px; color: var(--muted); padding: 8px 10px; border-radius: 10px; background: var(--bg2); border: 1px solid var(--line); margin-bottom: 10px; transition: all .2s; }
 .hint.active { background: rgba(217,180,90,.14); color: var(--gold2); border-color: var(--gold); animation: pulse 1.4s infinite; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 4px rgba(217,180,90,.12); } }
@@ -690,9 +691,14 @@ b.bad{color:#f66} b.warn,.warn{color:#f0b84a}
 .doll-slot:disabled{opacity:.72}
 .doll-cap{grid-column:1 / -1;font-size:12px;color:var(--muted)}
 .doll-cap.over{color:#f0b84a;font-weight:700}
-.favor-bar{position:relative;height:16px;border-radius:8px;background:#120f0c;border:1px solid var(--line);overflow:hidden;margin:8px 0}
-.favor-bar i{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,#8f7337,#f3d58a)}
-.favor-bar em{position:relative;display:block;text-align:center;font-style:normal;font-size:11px;line-height:16px}
+.favor-bar{position:relative;height:18px;border-radius:9px;background:linear-gradient(90deg,#3a1612 0%,#120f0c 50%,#1a2a16 100%);border:1px solid var(--line);overflow:hidden;margin:8px 0}
+.favor-bar .favor-axis{position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--gold-dim);z-index:1}
+.favor-bar i{position:absolute;top:0;bottom:0}
+.favor-bar i.neg{right:50%;background:linear-gradient(90deg,#a83a28,#c9a15a)}
+.favor-bar i.pos{left:50%;background:linear-gradient(90deg,#c9a15a,#4fbf63)}
+.favor-bar em{position:relative;z-index:1;display:block;text-align:center;font-style:normal;font-size:11px;line-height:18px}
+.favor-scale{display:flex;justify-content:space-between;margin-top:-4px}
+.merchant-add{margin-top:10px;padding-top:8px;border-top:1px dashed var(--line)}
 .face{font-weight:700}
 .fountain-pool{padding:8px 10px;border-radius:10px;background:#142028;border:1px solid #2d5a66;margin:8px 0}
 .rules h3{font-size:18px;margin-bottom:6px}
@@ -702,3 +708,20 @@ b.bad{color:#f66} b.warn,.warn{color:#f0b84a}
 .recap-list li{padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
 .recap-list small{display:inline-block;min-width:64px;color:var(--gold2);font-weight:700}
 .party-panel{margin-bottom:12px}
+.party-panel.subtle{margin-top:18px;background:transparent;border-style:dashed;opacity:.92}
+.party-panel.subtle>summary{cursor:pointer;color:var(--muted);font-size:13px;padding:2px 0}
+.skill-pick{margin:8px 0;padding:8px;border-radius:10px;background:#16130f;border:1px solid var(--line)}
+.skill-chip.on{border-color:var(--gold);color:var(--gold2)}
+.skill-all{margin-top:6px}
+.loot-result{margin-top:8px;padding:8px 10px;border-radius:10px;border:1px solid var(--line)}
+.loot-result.hit{background:#142018;border-color:#2f6b3a}
+.loot-result.miss{background:#241816;border-color:#6b3a32}
+.trade-offer{border-color:#8a6a32}
+.shared-notes textarea{width:100%;margin:8px 0}
+.casino-invite{border-color:var(--gold-dim)}
+.bj-seat{margin:8px 0;padding:8px;border-radius:10px;background:#16130f;border:1px solid var(--line)}
+.bj-seat.turn{border-color:var(--gold)}
+.coin-flash{display:inline-block;margin-left:6px;font-weight:800;animation:coinpop 1.1s ease}
+.coin-flash.win{color:#7dcea0}
+.coin-flash.lose{color:#e07a6a}
+@keyframes coinpop{0%{transform:translateY(8px);opacity:0}25%{opacity:1}100%{transform:translateY(-10px);opacity:.15}}

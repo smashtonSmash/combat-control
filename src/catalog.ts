@@ -63,7 +63,7 @@ export interface CatalogItem {
 }
 export const CONSUMABLES: CatalogItem[] = [
   // Green
-  { key: 'heal-green', name: 'Healing Potion', tier: 'green', type: 'potion', price: 10, desc: 'Regain 2d8+2 HP.', effect: { kind: 'heal', dice: '2d8+2' } },
+  { key: 'heal-green', name: 'Healing Potion', tier: 'green', type: 'potion', price: 10, desc: 'Regain 2d6+2 HP.', effect: { kind: 'heal', dice: '2d6+2' } },
   { key: 'oil-slashing', name: 'Oil of Slashing', tier: 'green', type: 'potion', price: 8, desc: 'Pour on one weapon: it deals slashing damage until the next long rest.', effect: { kind: 'weaponType', type: 'slashing' } },
   { key: 'oil-piercing', name: 'Oil of Piercing', tier: 'green', type: 'potion', price: 8, desc: 'Pour on one weapon: it deals piercing damage until the next long rest.', effect: { kind: 'weaponType', type: 'piercing' } },
   { key: 'oil-bludgeoning', name: 'Oil of Bludgeoning', tier: 'green', type: 'potion', price: 8, desc: 'Pour on one weapon: it deals bludgeoning damage until the next long rest.', effect: { kind: 'weaponType', type: 'bludgeoning' } },
@@ -105,16 +105,23 @@ export function catalogToItem(c: CatalogItem, qty = 1): Item {
     ...(c.effect.kind === 'heal' ? { heal: c.effect.dice } : {}) }
 }
 
-/** Old "Potion of Healing (2d4+2)" → Green Healing Potion. Idempotent. */
+/** Old common healing dice (2d4+2 or 2d8+2) → Common Healing Potion 2d6+2. Idempotent. */
+export function isOldCommonHeal(it: Item): boolean {
+  if (it.kind !== 'consumable') return false
+  if (it.catalogKey === 'heal-green') return it.heal !== '2d6+2'
+  if (it.heal === '2d4+2' || it.name === 'Potion of Healing') return true
+  if (it.heal === '2d8+2' && (it.tier === 'green' || /^common\b/i.test(it.name) || /^green\b/i.test(it.name) || it.name === 'Healing Potion')) return true
+  return false
+}
 export function migrateItem(it: Item): Item {
-  if (it.kind === 'consumable' && !it.catalogKey && (it.name === 'Potion of Healing' || it.heal === '2d4+2')) {
+  if (isOldCommonHeal(it)) {
     const g = catalogItem('heal-green')!
-    return { ...it, name: displayName(g), heal: '2d8+2', tier: 'green', catalogKey: g.key, price: g.price, description: g.desc }
+    return { ...it, name: displayName(g), heal: '2d6+2', tier: 'green', catalogKey: g.key, price: g.price, description: g.desc }
   }
   return it
 }
 const OLD_NAME = /\b(Green|Blue|Purple) [A-Z]/
-const needsItem = (i: Item) => (i.kind === 'consumable' && !i.catalogKey && (i.name === 'Potion of Healing' || i.heal === '2d4+2')) || (!!i.tier && OLD_NAME.test(i.name))
+const needsItem = (i: Item) => isOldCommonHeal(i) || (!!i.tier && OLD_NAME.test(i.name))
 const fixItem = (i: Item): Item => { const m = migrateItem(i); return m.tier && OLD_NAME.test(m.name) ? { ...m, name: renameTierText(m.name) } : m }
 /** Migrations for stored characters: old potions, old tier display names (Green/Blue/Purple → Common/Rare/Ultra Rare). */
 export function migrateInventory<T extends { inventory?: Item[]; armor?: string }>(c: T): T {

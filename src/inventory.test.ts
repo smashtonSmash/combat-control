@@ -22,9 +22,10 @@ describe('inventory', () => {
     expect(c.attacks[0]).toMatchObject({ name: 'Dagger', toHit: 4, damage: '1d4+2', damageType: 'piercing' })
     c = removeItem(c, w.id); expect(c.attacks).toHaveLength(0); expect(c.inventory).toHaveLength(0)
   })
-  it('potion heals 2d4+2 (capped) and decrements; stacks', () => {
+  it('potion heals 2d6+2 (capped) and decrements; stacks', () => {
     let c = addItem(addItem(base(), potionOfHealing()), potionOfHealing())
     expect(c.inventory).toHaveLength(1); expect(c.inventory![0].qty).toBe(2)
+    expect(c.inventory![0].heal).toBe('2d6+2')
     const r = useItem(c, c.inventory![0].id); c = r.char
     expect(c.currentHp).toBeGreaterThanOrEqual(14); expect(c.currentHp).toBeLessThanOrEqual(20); expect(c.inventory![0].qty).toBe(1)
     c = useItem(c, c.inventory![0].id).char; expect(c.inventory).toHaveLength(0)

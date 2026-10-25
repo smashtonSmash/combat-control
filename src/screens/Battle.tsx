@@ -24,12 +24,12 @@ import { withPlayer } from '../playerLabel'
 
 type SetEnc = (f: (e: Encounter) => Encounter) => void
 
-interface Props { encounter: Encounter; setEncounter: SetEnc; characters: Character[]; onSpendSlot?: (charId: string, level: number) => void; onUseScroll?: (charId: string, itemId: string) => void; onRest?: (kind: 'long' | 'short') => void; portraits?: Record<string, string | undefined>; onUpdateChar?: (c: Character) => void; onRecap?: (kind: RecapKind, text: string) => void; onDrops?: (items: Item[], source: string) => void }
+interface Props { encounter: Encounter; setEncounter: SetEnc; characters: Character[]; onSpendSlot?: (charId: string, level: number) => void; onUseScroll?: (charId: string, itemId: string) => void; onRest?: (kind: 'long' | 'short') => void; portraits?: Record<string, string | undefined>; onUpdateChar?: (c: Character) => void; onRecap?: (kind: RecapKind, text: string) => void; onDrops?: (items: Item[], source: string) => void; onRouteLoot?: (items: Item[], target: { kind: 'chest' } | { kind: 'player'; charId: string }) => void }
 
 const log = (e: Encounter, text: string, kind: LogEntry['kind']): LogEntry[] =>
   [{ id: uid(), round: e.round, text, kind, time: Date.now() }, ...e.log].slice(0, 200)
 
-export default function Battle({ encounter, setEncounter, characters, onSpendSlot, onUseScroll, onRest, portraits = {}, onUpdateChar, onRecap, onDrops }: Props) {
+export default function Battle({ encounter, setEncounter, characters, onSpendSlot, onUseScroll, onRest, portraits = {}, onUpdateChar, onRecap, onRouteLoot }: Props) {
   const dir = usePlayerDirectory()
   const played = (c: { name: string; characterId?: string }) => withPlayer(c.name, c.characterId ? dir.label[c.characterId] : undefined)
   const charOf = (cb?: Combatant) => (cb?.characterId ? characters.find((x) => x.id === cb.characterId) : undefined)
@@ -47,6 +47,21 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
   const [addSide, setAddSide] = useState<Side | null>(null)
   const [initOpen, setInitOpen] = useState(false)
   const [logOpen, setLogOpen] = useState(true)
+  const [lootRoll, setLootRoll] = useState<{ name: string; items: Item[]; text: string } | null>(null)
+  const rollFor = (m: Combatant) => {
+    const table = tableForMonster(m.name)
+    if (!table) {
+      const text = `${m.name} has no loot table.`
+      setLootRoll({ name: m.name, items: [], text })
+      return
+    }
+    const found = rollLoot(table)
+    const text = found.length
+      ? `${m.name}: ${found.map((i) => i.name).join(', ')}.`
+      : `${m.name}: nothing this time (parts ${Math.round(table.partChance * 100)}%, gear ${Math.round(table.gearChance * 100)}%).`
+    setLootRoll({ name: m.name, items: found, text })
+    onRecap?.('drop', text)
+  }
   const [flash, setFlash] = useState<{ id: string; text: string; kind: string; key: number } | null>(null)
 
   const byId = (id: string | null) => combatants.find((c) => c.id === id)
@@ -165,7 +180,6 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
 
   const applyAttack = (res: AttackResult) => {
     const a = byId(res.attackerId)!, t = byId(res.targetId)!
-    let pendingDrops: Item[] = []
     setEncounter((e) => {
       let entries = e.log
       let cs = e.combatants
@@ -189,15 +203,7 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
         const extra = res.steps.length ? ` [${res.steps.join('; ')}]` : ''
         push(`${a.name} → ${t.name}: ${res.weapon || 'attack'} ${res.crit ? 'CRITS' : 'hits'} for ${res.final} ${res.type}${extra}${res.rollText ? ` (${res.rollText})` : ''}. HP ${t.hp}→${newHp}`, 'hit')
         if (newHp === 0 && t.hp > 0) {
-          push(t.side === 'party' ? `${t.name} is DOWN! Start death saves.` : `${t.name} is defeated!`, 'down')
-          if (t.side === 'monster') {
-            const table = tableForMonster(t.name)
-            if (table) {
-              const found = rollLoot(table)
-              pendingDrops = found
-              push(found.length ? `🎲 ${t.name} drops ${found.map((i) => i.name).join(', ')}.` : `🎲 ${t.name} drops nothing.`, 'info')
-            }
-          }
+          push(t.side === 'party' ? `${t.name} is DOWN! Start death saves.` : `${t.name} is defeated! Roll loot if you are not reviving them.`, 'down')
         }
       }
       return { ...e, combatants: cs, log: entries }
@@ -223,10 +229,6 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
           if (w.message.includes('BROKEN')) onRecap?.('broken', `${withPlayer(ch.name, dir.label[ch.id])}: ${w.message}`)
         }
       }
-    }
-    if (pendingDrops.length) {
-      onDrops?.(pendingDrops, t.name)
-      onRecap?.('drop', `${t.name} dropped ${pendingDrops.map((i) => i.name).join(', ')}.`)
     }
     if (res.whetstone) { const ch = charOf(a); if (ch) onUpdateChar?.({ ...ch, effects: (ch.effects ?? []).filter((x) => x.kind !== 'whetstone') }) }
     if (res.spell && res.spell.slotLevel > 0) onSpendSlot?.(res.spell.charId, res.spell.slotLevel)
@@ -268,9 +270,9 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
       <div className="battle-actions">
         <button className="btn" onClick={() => setInitOpen(true)}>🎲 Roll Initiative</button>
         <button className="btn primary" disabled={!order.length} onClick={nextTurn}>{turnId ? 'Next Turn ▶' : 'Start ▶'}</button>
-        <button className="icon-btn" title="End combat" onClick={resetCombat}>⟲</button>
-        <button className="icon-btn" title="Long rest / new day" aria-label="Long rest / new day" onClick={longRest}>🌙</button>
-        <button className="icon-btn" title="Short rest" aria-label="Short rest" onClick={shortRest}>🌗</button>
+        <button className="icon-btn" title="End combat" aria-label="End combat" onClick={resetCombat}>⟲</button>
+        <button className="btn rest-btn" onClick={longRest}>🌙 Long Rest</button>
+        <button className="btn rest-btn" onClick={shortRest}>🌗 Short Rest</button>
       </div>
 
       <div className={'hint ' + (selC ? 'active' : '')}>
@@ -292,6 +294,32 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
           {!monsters.length && <div className="empty">Tap ＋ to add monsters</div>}
         </section>
       </div>
+
+      <section className="panel loot-roll">
+        <div className="row between"><b>Roll loot</b><span className="small muted">Not when HP hits 0</span></div>
+        <p className="small muted">Defeated or still-standing monsters. A miss means the table came up empty. You choose where a hit goes.</p>
+        {monsters.length === 0 && <div className="small muted">No monsters in this fight.</div>}
+        {monsters.map((m) => (
+          <div key={m.id} className="row between">
+            <span>{m.name} {m.hp <= 0 ? <em>defeated</em> : <span className="muted">{m.hp} HP</span>}</span>
+            <button className="btn sm" onClick={() => rollFor(m)}>Roll loot</button>
+          </div>
+        ))}
+        {lootRoll && (
+          <div className={'loot-result ' + (lootRoll.items.length ? 'hit' : 'miss')}>
+            <b>{lootRoll.items.length ? 'Hit' : 'Miss'}</b>
+            <div className="small">{lootRoll.text}</div>
+            {lootRoll.items.length > 0 && (
+              <div className="row wrap">
+                <button className="btn sm" onClick={() => { onRouteLoot?.(lootRoll.items, { kind: 'chest' }); setLootRoll(null) }}>Into chest</button>
+                {characters.map((c) => (
+                  <button key={c.id} className="btn sm" onClick={() => { lootRoll.items.forEach((it) => onRouteLoot?.([it], { kind: 'player', charId: c.id })); setLootRoll(null) }}>Give to <WhoName id={c.id} name={c.name} /></button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       <section className="log">
         <header onClick={() => setLogOpen(!logOpen)}>

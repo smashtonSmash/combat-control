@@ -33,7 +33,7 @@ export function scrollCastText(who: string, spell: CharSpell) {
   return t + ' The scroll crumbles to dust.'
 }
 
-/** Green Healing Potion (replaces the old Potion of Healing 2d4+2). */
+/** Common Healing Potion. Heals 2d6+2. Older 2d4+2 and 2d8+2 copies migrate to this. */
 export const potionOfHealing = (): Item => catalogToItem(catalogItem('heal-green')!)
 export const armorItem = (armorId: string, tier: Tier): Item => {
   const a = armorById(armorId)!
