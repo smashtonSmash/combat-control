@@ -8,14 +8,14 @@ import { isBroken, missing, repairCost } from '../durability'
 import { DurBar } from './DurBar'
 import { armorItem } from '../inventory'
 import { WEAPON_CATALOG, tieredWeapon, weaponPrice } from '../weapons'
-import { favorAdjust, favorFace, favorOf, MERCHANTS, merchantById, clampFavor } from '../favor'
+import { allMerchants, favorAdjust, favorFace, favorOf, merchantById, clampFavor, refusesToSell, type Merchant } from '../favor'
 import type { RecapKind } from '../recap'
 import { ConsumablePicker } from './Items'
 import { Segmented, Stepper } from './Sheet'
 import { WhoName } from './PlayerName'
 
 /** DM-run Shop (sell catalog items to a character) and Blacksmith (fuse two matching armors + fee → next tier). */
-export function ShopForge({ characters, onSave, onRecap }: { characters: Character[]; onSave: (c: Character) => void; onRecap?: (kind: RecapKind, text: string) => void }) {
+export function ShopForge({ characters, onSave, onRecap, merchants = [] }: { characters: Character[]; onSave: (c: Character) => void; onRecap?: (kind: RecapKind, text: string) => void; merchants?: Merchant[] }) {
   const [tab, setTab] = useState<'shop' | 'forge'>('shop')
   const [charId, setCharId] = useState(characters[0]?.id ?? '')
   const [adjust, setAdjust] = useState(0)
@@ -27,9 +27,14 @@ export function ShopForge({ characters, onSave, onRecap }: { characters: Charact
   const [msg, setMsg] = useState('')
   const [repairPts, setRepairPts] = useState<Record<string, number>>({})
   const c = characters.find((x) => x.id === charId)
-  const merchant = merchantById(merchantId)
+  const merchantList = allMerchants(merchants)
+  const merchant = merchantById(merchantId, merchants)
   const sell = (item: Item, gold: number) => {
     if (!c) return
+    if (merchant && refusesToSell(favorOf(c, merchant.id))) {
+      setMsg(`${merchant.name} refuses to sell to ${c.name}. Favor is too low.`)
+      return
+    }
     const r = buy(c, item, shopPriceSilver(gold, adjust))
     setMsg((r.ok ? '🛒 ' : '⚠ ') + r.message)
     if (!r.ok) return
@@ -56,7 +61,7 @@ export function ShopForge({ characters, onSave, onRecap }: { characters: Charact
           <Stepper label="Price adjust %" value={adjust} min={-90} max={300} step={5} onChange={setAdjust} />
           <div className="chips-row wrap">
             <button className={'chip ' + (!merchantId ? 'on' : '')} onClick={() => setMerchantId('')}>List price</button>
-            {MERCHANTS.map((m) => {
+            {merchantList.map((m) => {
               const f = favorOf(c, m.id)
               const face = favorFace(f)
               return <button key={m.id} className={'chip ' + (merchantId === m.id ? 'on' : '')} onClick={() => setMerchantId(m.id)}>{face.emoji} {m.name} <small>{f}</small></button>

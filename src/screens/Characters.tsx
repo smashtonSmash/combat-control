@@ -23,12 +23,13 @@ import { syncBlackMythic, unsyncBlackMythic, wieldBlock } from '../specialGear'
 import type { PartyStash } from '../party'
 import type { RecapKind } from '../recap'
 import { FeatureEditor, OriginsPanel, SRC_ICON } from '../components/Origins'
-import { ABIL_KEYS, ABIL_NAMES, SKILLS, applyBonuses, saveMod, skillMod, totalBonus } from '../origins'
+import { ABIL_KEYS, ABIL_NAMES, SKILLS, applyBonuses, saveMod, skillMod, totalBonus, type SavedOrigin } from '../origins'
+import { proposeTrade } from '../trade'
 import { Portrait, PortraitPicker } from '../components/Portrait'
 import { AbilityGenerator } from '../components/AbilityGen'
 import { KIND_ICON } from '../inventory'
 import { WhoName, usePlayerDirectory } from '../components/PlayerName'
-import { cleanPlayerName, withPlayer } from '../playerLabel'
+import { cleanPlayerName } from '../playerLabel'
 
 const blank = (): Character => ({
   id: uid(), name: '', cls: '', level: 1, race: '',
@@ -38,18 +39,25 @@ const blank = (): Character => ({
 
 export type GiveFn = (from: Character, toId: string, itemId: string) => Promise<boolean> | boolean
 
-export default function Characters({ characters, onSave, onDelete, giveTargets = [], onGive, customBudget = 3, onBudget, allowReroll = true, onAllowReroll, party, onParty, canToggleParty = true, onTransfer, onRecap }: {
+export default function Characters({ characters, onSave, onDelete, giveTargets = [], onGive, customBudget = 3, onBudget, allowReroll = true, onAllowReroll, party, onParty, canToggleParty = true, onTransfer, onRecap, isDM = true, library = [], onSaveOrigin, roster, onAcceptTrade, onDeclineTrade }: {
   characters: Character[]; onSave: (c: Character) => void; onDelete: (id: string) => void
   giveTargets?: { id: string; name: string }[]; onGive?: GiveFn
   customBudget?: number; onBudget?: (n: number) => void; allowReroll?: boolean; onAllowReroll?: (v: boolean) => void
   party?: PartyStash; onParty?: (p: PartyStash) => void; canToggleParty?: boolean
   onTransfer?: (fromId: string, toId: string, gold: number, silver: number) => void
   onRecap?: (kind: RecapKind, text: string) => void
+  isDM?: boolean
+  library?: SavedOrigin[]
+  onSaveOrigin?: (e: SavedOrigin) => void
+  roster?: Character[]
+  onAcceptTrade?: (fromId: string, tradeId: string) => void
+  onDeclineTrade?: (fromId: string, tradeId: string) => void
 }) {
   const [edit, setEdit] = useState<Character | null>(null)
   const [viewId, setViewId] = useState<string | null>(null)
   const [budgetOpen, setBudgetOpen] = useState(false)
   const viewing = characters.find((c) => c.id === viewId)
+  const people = roster ?? characters
   return (
     <div className="screen">
       <div className="screen-head">
@@ -66,7 +74,6 @@ export default function Characters({ characters, onSave, onDelete, giveTargets =
           {onAllowReroll && <label className="row small"><input type="checkbox" checked={allowReroll} onChange={(e) => onAllowReroll(e.target.checked)} /> Allow “Reroll all” for 4d6 ability rolls (until scores are assigned)</label>}
         </div>
       )}
-      {party && onParty && <PartyPanel characters={characters} party={party} onParty={onParty} onSave={onSave} canToggle={canToggleParty} onRecap={(t) => onRecap?.('transfer', t)} />}
       {characters.length === 0 && <div className="empty">No characters yet. Tap <b>＋ New</b> to make your first sheet.</div>}
       <div className="char-list">
         {characters.map((c) => (
@@ -91,14 +98,17 @@ export default function Characters({ characters, onSave, onDelete, giveTargets =
           </button>
         ))}
       </div>
+      {party && onParty && <PartyPanel characters={people} party={party} onParty={onParty} onSave={onSave} canToggle={canToggleParty} onRecap={(t) => onRecap?.('transfer', t)} />}
       {viewing && !edit && (
         <CharacterView c={viewing} onClose={() => setViewId(null)} onEdit={() => setEdit(structuredClone(viewing))} onPersist={onSave}
-          giveTargets={giveTargets.filter((t) => t.id !== viewing.id)} onGive={onGive} onTransfer={onTransfer} onRecap={onRecap} />
+          giveTargets={giveTargets.filter((t) => t.id !== viewing.id)} onGive={onGive} onTransfer={onTransfer} onRecap={onRecap}
+          canAdd={isDM} roster={people} onAcceptTrade={onAcceptTrade} onDeclineTrade={onDeclineTrade} />
       )}
       {edit && (
         <CharacterSheet c={edit} customBudget={customBudget} allowReroll={allowReroll} isNew={!characters.some((x) => x.id === edit.id)} onClose={() => setEdit(null)}
           onSave={(c) => { onSave(c); setEdit(null); setViewId(c.id) }} onPersist={onSave}
           giveTargets={giveTargets.filter((t) => t.id !== edit.id)} onGive={onGive} onTransfer={onTransfer} onRecap={onRecap}
+          canAdd={isDM} library={library} onSaveOrigin={onSaveOrigin} roster={people} onAcceptTrade={onAcceptTrade} onDeclineTrade={onDeclineTrade}
           onDelete={() => { if (confirm(`Delete ${edit.name || 'this character'}?`)) { onDelete(edit.id); setEdit(null) } }} />
       )}
     </div>
@@ -107,11 +117,17 @@ export default function Characters({ characters, onSave, onDelete, giveTargets =
 
 
 
-function CharacterSheet({ c, isNew, onClose, onSave, onDelete, onPersist, giveTargets, onGive, customBudget, allowReroll, onTransfer, onRecap }: {
+function CharacterSheet({ c, isNew, onClose, onSave, onDelete, onPersist, giveTargets, onGive, customBudget, allowReroll, onTransfer, onRecap, canAdd, library, onSaveOrigin, roster = [], onAcceptTrade, onDeclineTrade }: {
   c: Character; isNew: boolean; onClose: () => void; onSave: (c: Character) => void; onDelete: () => void
   onPersist: (c: Character) => void; giveTargets: { id: string; name: string }[]; onGive?: GiveFn; customBudget: number; allowReroll: boolean
   onTransfer?: (fromId: string, toId: string, gold: number, silver: number) => void
   onRecap?: (kind: RecapKind, text: string) => void
+  canAdd: boolean
+  library: SavedOrigin[]
+  onSaveOrigin?: (e: SavedOrigin) => void
+  roster: Character[]
+  onAcceptTrade?: (fromId: string, tradeId: string) => void
+  onDeclineTrade?: (fromId: string, tradeId: string) => void
 }) {
   const [d, setD] = useState(c)
   const [picking, setPicking] = useState(false)
@@ -137,7 +153,7 @@ function CharacterSheet({ c, isNew, onClose, onSave, onDelete, onPersist, giveTa
           <Portrait src={d.portrait} name={d.name} size={84} /><span>📷</span>
         </button>
         <div className="grow">
-          <TextField label="Name" value={d.name} onChange={(v) => set({ name: v })} placeholder="Thorin" />
+          <TextField label="Name" value={d.name} onChange={(v) => set({ name: v })} placeholder="Name" />
           {account && <div className="small">Played by <b>{account}</b> <span className="muted">(campaign account)</span></div>}
           <TextField label="Player name" value={d.playerName ?? ''} onChange={(v) => set({ playerName: cleanPlayerName(v) })} placeholder="Optional" />
           <div className="small muted">{account ? 'Used offline, or when that account has no display name. Leave blank if you don’t know.' : 'Optional. Who plays this character, so the table can tell them apart. Leave blank if you don’t know.'}</div>
@@ -149,11 +165,11 @@ function CharacterSheet({ c, isNew, onClose, onSave, onDelete, onPersist, giveTa
       </div>
       {d.portrait && <button className="link small" onClick={() => set({ portrait: undefined })}>Remove portrait</button>}
       {picking && <PortraitPicker onCancel={() => setPicking(false)} onPick={(u) => { set({ portrait: u }); setPicking(false) }} />}
-      <OriginsPanel d={d} setD={(n) => set(n)} customBudget={customBudget} />
+      <OriginsPanel d={d} setD={(n) => set(n)} customBudget={customBudget} library={library} onSaveOrigin={onSaveOrigin} />
       {!d.origin?.raceKey && !d.origin?.classKey && (d.race || d.cls) && <div className="small muted">Current: {[d.race, d.cls].filter(Boolean).join(' · ')} (pick from the lists to add traits and features)</div>}
       <div className="mini-label">Ability scores {Object.keys(bonus).some((k) => bonus[k as keyof typeof bonus]) && <span className="muted">(base + bonuses)</span>}</div>
       <AbilityGenerator d={d} allowReroll={allowReroll} setBase={(b, g) => set(applyBonuses({ ...d, baseAbilities: b, abilityGen: g }))} />
-      <ArmorPicker d={d} set={set} />
+      <ArmorPicker d={d} set={set} locked={!isNew && !canAdd} />
       <div className="grid3">
         <NumField label={d.armorId && !d.acManual ? 'AC (auto)' : 'AC'} value={d.ac} onChange={(v) => set({ ac: v, acManual: d.armorId ? true : d.acManual })} />
         <NumField label="Max HP" value={d.maxHp} onChange={(v) => set({ maxHp: v })} />
@@ -178,9 +194,12 @@ function CharacterSheet({ c, isNew, onClose, onSave, onDelete, onPersist, giveTa
       <div className="mini-label">✨ Spells</div>
       <SpellsSection d={d} commit={(n) => { setD(n); if (!isNew && n.name.trim()) onPersist(n) }} />
       <div className="mini-label">🎒 Inventory</div>
-      <Inventory d={d} commit={(n) => { setD(n); if (!isNew && n.name.trim()) onPersist(n) }} giveTargets={isNew ? [] : giveTargets} onGive={onGive} onRecap={onRecap} />
+      <TradeInbox c={d} roster={roster} onAccept={onAcceptTrade} onDecline={onDeclineTrade} />
+      <Inventory d={d} commit={(n) => { setD(n); if (!isNew && n.name.trim()) onPersist(n) }} giveTargets={isNew ? [] : giveTargets} onGive={onGive} onRecap={onRecap} canAdd={isNew || canAdd} />
+      <label className="field"><span>Character details</span>
+        <textarea rows={4} value={d.details ?? ''} onChange={(e) => set({ details: e.target.value })} placeholder="Appearance, voice, clothes, and other customization." /></label>
       <label className="field"><span>Notes</span>
-        <textarea rows={6} value={d.notes} onChange={(e) => set({ notes: e.target.value })} placeholder="Backstory, spells, inventory, reminders…" /></label>
+        <textarea rows={6} value={d.notes} onChange={(e) => set({ notes: e.target.value })} placeholder="Backstory, reminders, and anything that is not appearance." /></label>
       {!isNew && <button className="btn ghost danger" onClick={onDelete}>🗑 Delete character</button>}
     </Sheet>
   )
@@ -190,43 +209,44 @@ export function TierBadge({ tier }: { tier: Tier }) {
   return <span className="tier-badge" style={{ color: TIER_COLORS[tier], borderColor: TIER_COLORS[tier], boxShadow: `0 0 8px ${TIER_COLORS[tier]}66` }}>◆ {TIER_SHORT[tier]}</span>
 }
 
-function ArmorPicker({ d, set }: { d: Character; set: (p: Partial<Character>) => void }) {
+function ArmorPicker({ d, set, locked }: { d: Character; set: (p: Partial<Character>) => void; locked?: boolean }) {
   const def = armorById(d.armorId)
   const eff = combinedArmor({ ...d, prof: charProf(d) })
   const unders = ARMOR_CATALOG.flatMap((a) => TIERS.filter((t) => canBeUnderLayer(a.id, t)).map((t) => ({ a, t })))
   return (
     <div className="panel armor-picker">
       <div className="row between"><b>🛡 Armor</b>{d.armorTier && <TierBadge tier={d.armorTier} />}</div>
-      <div className="chips-row wrap">
+      {locked && <div className="small muted">{d.armor ? <>Wearing {d.armor}. New armor comes from the DM, loot, a shop, or a trade.</> : 'New armor is added by the DM, loot, a shop, or a trade you accept.'}</div>}
+      {!locked && <div className="chips-row wrap">
         <button className={'chip ' + (!d.armorId ? 'on' : '')} onClick={() => set({ armorId: undefined, armorTier: undefined })}>None / custom</button>
         {ARMOR_CATALOG.map((a) => (
           <button key={a.id} className={'chip ' + (d.armorId === a.id ? 'on' : '')} onClick={() => set({ armorId: a.id, armorTier: d.armorTier ?? 'green' })}>
             {a.name} <small>{a.category} · {a.focus}</small>
           </button>
         ))}
-      </div>
+      </div>}
       {def && (
         <>
-          <div className="tier-row">
+          {!locked && <div className="tier-row">
             {TIERS.map((t) => (
               <button key={t} className={'tier-chip ' + (d.armorTier === t ? 'on' : '')} style={{ ['--tier' as string]: TIER_COLORS[t] }} onClick={() => set({ armorTier: t })}>
                 {TIER_LABELS[t]}
               </button>
             ))}
-          </div>
+          </div>}
           <div className="small muted">AC {def.baseAc} + Dex{def.dexCap === null ? '' : def.dexCap ? ` (max ${def.dexCap})` : ' (none)'} = <b>{armorAc(d, abilityMod(d.abilities.dex))}</b>
             {d.acManual && <> · manual AC {d.ac} in use <button className="link small" onClick={() => set({ acManual: false })}>use auto</button></>}</div>
           <ul className="armor-effects">
             {eff.lines.map((l) => <li key={l}>✦ {l}</li>)}
             {eff.notes.map((l) => <li key={l} className="muted">📝 {l}</li>)}
           </ul>
-          <div className="mini-label">Under-layer (only under medium/heavy armor)</div>
-          {def.category === 'light'
+          {!locked && <div className="mini-label">Under-layer (only under medium/heavy armor)</div>}
+          {!locked && (def.category === 'light'
             ? <div className="small muted">Not available with light armor. Only Legendary/Mythic Padded qualify as an under-layer.</div>
             : <div className="chips-row wrap">
                 <button className={'chip ' + (!d.underId ? 'on' : '')} onClick={() => set({ underId: undefined, underTier: undefined })}>None</button>
                 {unders.map(({ a, t }) => <button key={a.id + t} className={'chip ' + (d.underId === a.id && d.underTier === t ? 'on' : '')} onClick={() => set({ underId: a.id, underTier: t })}>{TIER_SHORT[t]} {a.name}</button>)}
-              </div>}
+              </div>)}
         </>
       )}
     </div>
@@ -284,11 +304,11 @@ function CoinPurse({ d, set, targets = [], onTransfer }: { d: Character; set: (p
   )
 }
 
-function Inventory({ d, commit, giveTargets, onGive, onRecap }: {
+function Inventory({ d, commit, giveTargets, onRecap, canAdd }: {
   d: Character; commit: (c: Character) => void; giveTargets: { id: string; name: string }[]; onGive?: GiveFn
   onRecap?: (kind: RecapKind, text: string) => void
+  canAdd: boolean
 }) {
-  const dir = usePlayerDirectory()
   const inv = d.inventory ?? []
   const [sel, setSel] = useState<string | null>(null)
   const [kitFor, setKitFor] = useState<string | null>(null)
@@ -319,7 +339,7 @@ function Inventory({ d, commit, giveTargets, onGive, onRecap }: {
             <button className="link small" aria-label={`End ${e.name}`} onClick={() => commit({ ...d, effects: (d.effects ?? []).filter((x) => x.id !== e.id) })}>✕</button></span>)}
         </div>
       )}
-      {inv.length === 0 && <div className="small muted">Empty pack. Add items below, or the DM can drop loot to you.</div>}
+      {inv.length === 0 && <div className="small muted">{canAdd ? 'Empty pack. Add starting gear below, or the DM can drop loot to you.' : 'Empty pack. Gear comes from the DM, loot, a shop, or a trade you accept.'}</div>}
       <div className="item-grid">
         {[...inv].sort((a, b) => Number(!!b.equipped) - Number(!!a.equipped)).map((x) => (
           <ItemCard key={x.id} it={x} selected={x.id === sel} onClick={() => { setSel(x.id === sel ? null : x.id); setGiving(false); setMsg('') }} />
@@ -366,34 +386,64 @@ function Inventory({ d, commit, giveTargets, onGive, onRecap }: {
                 <button className="link small" onClick={() => setKitFor(null)}>Cancel</button>
               </div>) : <button className="btn sm primary" onClick={() => setKitFor(it.id)}>🧰 Use kit…</button>)}
             {it.kind === 'consumable' && it.catalogKey !== 'field-repair' && !it.kitTier && <button className="btn sm primary" onClick={() => { const r = useItem(d, it.id); commit(r.char); setMsg(r.message); if (it.qty <= 1) setSel(null) }}>Use</button>}
-            {onGive && giveTargets.length > 0 && <button className="btn sm" onClick={() => setGiving(!giving)}>Give…</button>}
+            {giveTargets.length > 0 && <button className="btn sm" onClick={() => setGiving(!giving)}>Offer…</button>}
+            {(d.trades ?? []).some((t) => t.itemId === it.id) && <span className="small">Waiting for {(d.trades ?? []).find((t) => t.itemId === it.id)?.toName} to accept.</span>}
             <button className="btn sm danger" onClick={() => { if (confirm(`Drop ${it.name}${it.qty > 1 ? ` (all ${it.qty})` : ''}?`)) { commit(removeItem(d, it.id)); setMsg(`Dropped ${it.name}.`); close() } }}>Drop</button>
           </div>
           {giving && (
             <div className="chips-row wrap">
               {giveTargets.map((t) => (
-                <button key={t.id} className="chip" onClick={async () => {
+                <button key={t.id} className="chip" onClick={() => {
                   const from = it.equipped ? unequip(d, it.id) : d
-                  if (from !== d) commit(from)
-                  const ok = await onGive!(from, t.id, it.id)
-                  if (ok) { setD_after(from) } else setMsg('Could not give that item.')
-                  function setD_after(f: Character) { commit(removeItem(f, it!.id)); setMsg(`Gave ${it!.name} to ${withPlayer(t.name, dir.label[t.id])}.`); close() }
+                  const offered = proposeTrade(from, t.id, t.name, it.id)
+                  if (!offered.ok) { setMsg(offered.message); return }
+                  commit(offered.char)
+                  setMsg(offered.message)
+                  close()
                 }}>→ <WhoName id={t.id} name={t.name} /></button>
               ))}
             </div>
           )}
         </div>
       )}
-      <button className="btn ghost sm" onClick={() => setAdding(!adding)}>{adding ? 'Done adding' : '+ Add item'}</button>
-      {adding && <ItemPicker customSpells={(d.spells ?? []).filter((s) => !s.srd)} onAdd={(x) => { commit(addItem(d, x)); setMsg(`Added ${x.name}.`) }} />}
+      {canAdd && <button className="btn ghost sm" onClick={() => setAdding(!adding)}>{adding ? 'Done adding' : '+ Add item'}</button>}
+      {canAdd && adding && <ItemPicker customSpells={(d.spells ?? []).filter((s) => !s.srd)} onAdd={(x) => { commit(addItem(d, x)); setMsg(`Added ${x.name}.`) }} />}
+      {!canAdd && <div className="small muted">You can drop gear or offer it. Adding a new item is for the DM, or for starting gear while this character is being created.</div>}
     </div>
   )
 }
 
-function CharacterView({ c, onClose, onEdit, onPersist, giveTargets, onGive, onTransfer, onRecap }: {
+function TradeInbox({ c, roster, onAccept, onDecline }: {
+  c: Character; roster: Character[]
+  onAccept?: (fromId: string, tradeId: string) => void
+  onDecline?: (fromId: string, tradeId: string) => void
+}) {
+  const offers = roster.flatMap((from) => (from.id === c.id ? [] : (from.trades ?? []).filter((t) => t.toId === c.id).map((t) => ({ t, from }))))
+  if (!offers.length) return null
+  return (
+    <div className="panel trade-offer">
+      <b>Offers waiting for you</b>
+      {offers.map(({ t, from }) => (
+        <div key={t.id} className="row between">
+          <span className="small">{from.name} offers <b>{t.itemName}</b></span>
+          <span className="row">
+            <button className="btn sm primary" onClick={() => onAccept?.(from.id, t.id)}>Accept</button>
+            <button className="btn sm" onClick={() => onDecline?.(from.id, t.id)}>Decline</button>
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function CharacterView({ c, onClose, onEdit, onPersist, giveTargets, onGive, onTransfer, onRecap, canAdd, roster = [], onAcceptTrade, onDeclineTrade }: {
   c: Character; onClose: () => void; onEdit: () => void; onPersist: (c: Character) => void; giveTargets: { id: string; name: string }[]; onGive?: GiveFn
   onTransfer?: (fromId: string, toId: string, gold: number, silver: number) => void
   onRecap?: (kind: RecapKind, text: string) => void
+  canAdd: boolean
+  roster: Character[]
+  onAcceptTrade?: (fromId: string, tradeId: string) => void
+  onDeclineTrade?: (fromId: string, tradeId: string) => void
 }) {
   const prof = charProf(c)
   const cur = c.currentHp ?? c.maxHp, temp = c.tempHp ?? 0
@@ -454,7 +504,8 @@ function CharacterView({ c, onClose, onEdit, onPersist, giveTargets, onGive, onT
           <div className="cv-coins"><span className="coin-pill gold">{c.purse?.gold ?? 0} g</span><span className="coin-pill silver">{c.purse?.silver ?? 0} s</span></div>
         </section>
         <section className="cv-sec"><h3>🎒 Inventory</h3>
-          <Inventory d={c} commit={commit} giveTargets={giveTargets} onGive={onGive} onRecap={onRecap} />
+          <TradeInbox c={c} roster={roster} onAccept={onAcceptTrade} onDecline={onDeclineTrade} />
+          <Inventory d={c} commit={commit} giveTargets={giveTargets} onGive={onGive} onRecap={onRecap} canAdd={canAdd} />
           {onTransfer && <CoinPurse d={c} set={(p) => commit({ ...c, ...p })} targets={giveTargets} onTransfer={onTransfer} />}
         </section>
         {(c.spells?.length || c.spellcasting || c.slots) ? <section className="cv-sec"><h3>✨ Spells</h3><SpellsSection d={c} commit={commit} /></section> : null}
@@ -465,6 +516,9 @@ function CharacterView({ c, onClose, onEdit, onPersist, giveTargets, onGive, onT
           ))}
           {c.traits.map((t) => <div key={t.id} className={'badge trait effect-' + t.effect}>✦ {t.name || EFFECT_LABEL[t.effect]} {t.damageTypes.map((x) => DAMAGE_ICONS[x]).join('')}</div>)}
           {(c.proficiencies ?? []).length > 0 && <div className="small muted cv-profs">Proficiencies: {c.proficiencies!.join(', ')}</div>}
+        </section>
+        <section className="cv-sec"><h3>Character details</h3>
+          {c.details ? <p className="cv-notes">{c.details}</p> : <p className="small muted">No appearance notes yet. Edit the character to add them.</p>}
         </section>
         {c.notes && <section className="cv-sec"><h3>📝 Notes</h3><p className="cv-notes">{c.notes}</p></section>}
       </div>

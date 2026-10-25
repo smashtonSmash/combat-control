@@ -53,8 +53,9 @@ export function SpellsSection({ d, commit }: { d: Character; commit: (c: Charact
       <div className="row between">
         <b>✨ Spell slots {slots.pact ? <small className="muted">(pact magic)</small> : null}</b>
         <span className="row" style={{ gap: 6 }}>
-          <button className="btn sm" onClick={() => { setSlots(restoreAll(slots)); setMsg('Long rest: all slots restored.') }}>🌙 Long rest</button>
-          {slots.pact && <button className="btn sm" onClick={() => { setSlots(restoreAll(slots)); setMsg('Short rest: pact slots restored.') }}>🌗 Short</button>}
+          {d.spellcasting && !info && <button className="btn ghost sm" onClick={() => commit({ ...d, spellcasting: false, slots: undefined, slotsManual: false })}>Turn off spellcasting</button>}
+          <button className="btn sm" onClick={() => { setSlots(restoreAll(slots)); setMsg('Long rest: all slots restored.') }}>🌙 Long Rest</button>
+          {slots.pact && <button className="btn sm" onClick={() => { setSlots(restoreAll(slots)); setMsg('Short rest: pact slots restored.') }}>🌗 Short Rest</button>}
           <button className="icon-btn sm" aria-label="Edit slots" onClick={() => setEditSlots(!editSlots)}>✎</button>
         </span>
       </div>

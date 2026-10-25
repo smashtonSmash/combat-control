@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import type { Character } from '../types'
 import { fmtCoins, purseTotal, toSilver } from '../casino/money'
 import * as BJ from '../casino/blackjack'
+import { emptyTable, type CasinoTable, type TableAction } from '../casino/table'
 import { WHEEL_ORDER, betLabel, colorOf, oddsOf, settle, spinNumber, type BetKey } from '../casino/roulette'
 import { WhoName } from '../components/PlayerName'
+import { CasinoTableView } from '../components/CasinoTable'
 
 /** Change a character's coins by `delta` silver. Returns false if they can't afford it. */
 export type Adjust = (charId: string, delta: number, note: string) => boolean
@@ -16,18 +18,31 @@ const GAMES: { id: string; name: string; icon: string; blurb: string; Component:
   { id: 'roulette', name: 'Roulette', icon: '🎡', blurb: 'European single zero · straight up 35:1', Component: Roulette },
 ]
 
-export default function Casino({ characters, adjust }: { characters: Character[]; adjust: Adjust }) {
+export default function Casino({ characters, adjust, table = emptyTable(), isDealer = true, localIds, onCommit, onAct }: {
+  characters: Character[]
+  adjust: Adjust
+  table?: CasinoTable
+  isDealer?: boolean
+  localIds?: string[]
+  onCommit?: (t: CasinoTable) => void
+  onAct?: (a: TableAction) => void
+}) {
   const [charId, setCharId] = useState<string | null>(() => localStorage.getItem('dnd.casinoChar'))
   const [gameId, setGameId] = useState<string>(() => localStorage.getItem('dnd.casinoGame') || 'blackjack')
   useEffect(() => { if (charId) localStorage.setItem('dnd.casinoChar', charId) }, [charId])
   useEffect(() => { localStorage.setItem('dnd.casinoGame', gameId) }, [gameId])
   const player = characters.find((c) => c.id === charId) ?? characters[0]
-  const game = GAMES.find((g) => g.id === gameId) ?? GAMES[0]
+  const games = table.open ? GAMES.filter((g) => g.id === 'blackjack') : GAMES
+  const game = games.find((g) => g.id === gameId) ?? games[0]
+  const ids = localIds ?? characters.map((c) => c.id)
 
   return (
     <div className="screen casino">
       <div className="screen-head"><h1>🎰 Casino</h1></div>
-      {!player ? <div className="empty">Make a character first — they bet from their coin purse.</div> : (
+      {(table.open || isDealer) && onCommit && onAct && (
+        <CasinoTableView table={table} characters={characters} localIds={ids} isDealer={isDealer} onCommit={onCommit} onAct={onAct} />
+      )}
+      {!player ? <div className="empty">Make a character first — they bet from their coin purse.</div> : table.open ? null : (
         <>
           <div className="mini-label">Who’s playing?</div>
           <div className="chips-row wrap">

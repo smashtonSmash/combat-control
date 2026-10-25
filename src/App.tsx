@@ -20,7 +20,11 @@ import { addItem, removeItem } from './inventory'
 import { effectiveSlots, isCaster } from './components/Spells'
 import { loadSpells, restoreAll, spendSlot } from './spells'
 import { applyDelta } from './casino/money'
-import { listCampaigns, useCampaign, useSession, supabase, type CampaignInfo } from './cloud'
+import { applyInbox, emptyTable, withMoney, type CasinoTable, type TableAction } from './casino/table'
+import { listCampaigns, useCampaign, useSession, supabase, type CampaignInfo, type HomebrewSettings } from './cloud'
+import type { SavedOrigin } from './origins'
+import { emptyNote, type SharedNote } from './notes'
+import { acceptTrade, declineTrade } from './trade'
 import { CloudSheet } from './components/Cloud'
 import { PlayerNames } from './components/PlayerName'
 import { playerDirectory } from './playerLabel'
@@ -224,6 +228,12 @@ export default function App() {
   const [town, setTown] = useStored<TownState>('town', defaultTown)
   const [recap, setRecap] = useStored<RecapEvent[]>('sessionRecap', () => [])
   const [pendingLoot, setPendingLoot] = useStored<Item[]>('pendingLoot', () => [])
+  const [library, setLibrary] = useStored<SavedOrigin[]>('originLibrary', () => [])
+  const [sharedNote, setSharedNote] = useStored<SharedNote>('sharedNotes', emptyNote)
+  const [casinoTable, setCasinoTable] = useStored<CasinoTable>('casinoTable', emptyTable)
+  const noteRef = useRef(sharedNote); noteRef.current = sharedNote
+  const tableRef = useRef(casinoTable); tableRef.current = casinoTable
+  const seenInbox = useRef<Set<string>>(new Set())
   const hydrated = useRef<string | null>(null)
   const chests = online ? cloud.chests : localChests
   const saveChest = (k: Chest) => (online ? cloud.saveChest(k) : setLocalChests((ks) => (ks.some((x) => x.id === k.id) ? ks.map((x) => (x.id === k.id ? k : x)) : [...ks, k])))
@@ -259,8 +269,11 @@ export default function App() {
     if (h.party) setParty(h.party)
     if (h.town) setTown(h.town)
     if (h.recap) setRecap(h.recap)
-  }, [homebrewKey, active?.settings?.homebrew, setParty, setTown, setRecap])
-  const pushHomebrew = (patch: { party?: PartyStash; town?: TownState; recap?: RecapEvent[] }) => {
+    if (h.library?.length) setLibrary(h.library)
+    if (h.notes) setSharedNote(h.notes)
+    if (h.casino) setCasinoTable(h.casino)
+  }, [homebrewKey, active?.settings?.homebrew, setParty, setTown, setRecap, setLibrary, setSharedNote, setCasinoTable])
+  const pushHomebrew = (patch: HomebrewSettings) => {
     if (!online || !isDM || !active) return
     const settings = { ...active.settings, homebrew: { ...active.settings?.homebrew, ...patch } }
     setCampaigns((cs) => cs.map((x) => (x.id === active.id ? { ...x, settings } : x)))
@@ -297,6 +310,75 @@ export default function App() {
     saveCharacter({ ...to, purse: r.to })
     note('transfer', `${from.name} sends ${gold}g ${silver}s to ${to.name}.`)
   }
+  const author = online ? (cloud.members.find((m) => m.user_id === myId)?.display_name || 'Player') : 'Table'
+  const saveOrigin = (e: SavedOrigin) => {
+    setLibrary((lib) => {
+      const next = [e, ...lib.filter((x) => x.id !== e.id)].slice(0, 80)
+      if (online && isDM) pushHomebrew({ library: next })
+      else if (online && active) void supabase.rpc('save_origin_entry', { cid: active.id, entry: e }).then(({ error }) => {
+        if (error) cloud.setError(`${error.message} Custom origins sync after supabase/batch_v7.sql.`)
+      })
+      return next
+    })
+  }
+  const saveNote = (n: SharedNote) => {
+    setSharedNote(n)
+    if (!online || !active) return
+    if (isDM) { pushHomebrew({ notes: n }); return }
+    void supabase.rpc('save_shared_note', { cid: active.id, note: n }).then(({ error }) => {
+      if (error) cloud.setError(`${error.message} Shared notes sync after supabase/batch_v7.sql. Saved on this device.`)
+    })
+  }
+  const commitTable = (next: CasinoTable) => {
+    const prev = tableRef.current
+    const done = withMoney(prev, next, (id, silver) => { adjustCoins(id, silver) })
+    tableRef.current = done
+    setCasinoTable(done)
+    if (online && isDM) pushHomebrew({ casino: done })
+  }
+  const sendCasino = (a: TableAction) => {
+    if (!online || isDM) { commitTable(applyInbox(tableRef.current, [a])); return }
+    const optimistic = applyInbox(tableRef.current, [a])
+    tableRef.current = optimistic
+    setCasinoTable(optimistic)
+    if (!active) return
+    void supabase.rpc('casino_act', { cid: active.id, action: a }).then(({ error }) => {
+      if (error) cloud.setError(`${error.message} Casino sync needs supabase/batch_v7.sql.`)
+    })
+  }
+  const acceptOffer = async (fromId: string, tradeId: string) => {
+    const from = allChars.find((c) => c.id === fromId)
+    const trade = from?.trades?.find((t) => t.id === tradeId)
+    const to = trade ? allChars.find((c) => c.id === trade.toId) : undefined
+    if (!from || !trade || !to) return
+    if (online && !isDM) {
+      const { error } = await supabase.rpc('accept_item_trade', { from_id: fromId, trade_id: tradeId })
+      if (error) cloud.setError(`${error.message} Accepting a trade needs supabase/batch_v7.sql.`)
+      else { note('transfer', `${to.name} accepts ${trade.itemName}.`); void cloud.reload() }
+      return
+    }
+    const r = acceptTrade(from, to, tradeId)
+    saveCharacter(r.from)
+    if (r.ok) { saveCharacter(r.to); note('transfer', r.message) }
+  }
+  const declineOffer = async (fromId: string, tradeId: string) => {
+    const from = allChars.find((c) => c.id === fromId)
+    if (!from) return
+    if (online && !isDM) {
+      const { error } = await supabase.rpc('decline_item_trade', { from_id: fromId, trade_id: tradeId })
+      if (error) cloud.setError(`${error.message} Declining a trade needs supabase/batch_v7.sql.`)
+      else void cloud.reload()
+      return
+    }
+    saveCharacter(declineTrade(from, tradeId))
+  }
+  const routeLoot = (items: Item[], target: { kind: 'chest' } | { kind: 'player'; charId: string }) => {
+    if (!items.length) return
+    if (target.kind === 'player') { for (const it of items) giveItemTo(target.charId, it); return }
+    const base = chests[0] ?? { id: uid(), name: 'Chest 1', items: [] as Item[], gold: 0, silver: 0, pouches: [] }
+    saveChest({ ...base, items: [...base.items, ...items], updated: Date.now() })
+    note('drop', `Chest receives ${items.map((i) => i.name).join(', ')}.`)
+  }
   const giveBetween = async (from: Character, toId: string, itemId: string) => {
     const item = (from.inventory ?? []).find((i) => i.id === itemId)
     if (!item) return false
@@ -328,6 +410,37 @@ export default function App() {
 
   const deleteCharacter = (id: string) => (online ? cloud.deleteChar(id) : setCharacters((cs) => cs.filter((c) => c.id !== id)))
 
+  useEffect(() => {
+    if (!online || !session) return
+    if (!isDM && tab !== 'campaign' && tab !== 'casino') return
+    const id = window.setInterval(() => { void refreshCampaigns() }, 4000)
+    return () => window.clearInterval(id)
+  }, [online, isDM, tab, session, refreshCampaigns])
+  useEffect(() => {
+    if (!online || !active?.settings?.homebrew) return
+    const h = active.settings.homebrew
+    if (h.notes && h.notes.at > noteRef.current.at) setSharedNote(h.notes)
+    if (h.library?.length) {
+      setLibrary((cur) => {
+        const ids = new Set(cur.map((e) => e.id))
+        const extra = h.library!.filter((e) => !ids.has(e.id))
+        return extra.length ? [...extra, ...cur] : cur
+      })
+    }
+    if (!isDM && h.casino && h.casino.updated > tableRef.current.updated) setCasinoTable(h.casino)
+    if (!isDM || !h.casinoInbox?.length) return
+    const fresh = h.casinoInbox.filter((a) => a.id && !seenInbox.current.has(a.id))
+    if (!fresh.length) return
+    fresh.forEach((a) => seenInbox.current.add(a.id))
+    const prev = h.casino && h.casino.updated >= tableRef.current.updated ? h.casino : tableRef.current
+    const next = withMoney(prev, applyInbox(prev, fresh), (id, silver) => { adjustCoins(id, silver) })
+    tableRef.current = next
+    setCasinoTable(next)
+    pushHomebrew({ casino: next, casinoInbox: [] })
+  }, [online, isDM, active?.settings?.homebrew])
+
+  const casinoChars = !online || isDM ? allChars : characters
+
   return (
     <div className="app">
       <header className="topbar">
@@ -347,17 +460,17 @@ export default function App() {
       {online && cloud.error && <div className="live-banner" style={{ borderColor: '#a83a28', background: '#2a1210' }}>⚠ Sync problem: {cloud.error} <button className="link" onClick={() => cloud.setError('')}>dismiss</button></div>}
       <PlayerNames value={players}>
       <main key={tab} className="fade-in">
-        {tab === 'battle' && <Battle encounter={encounter} setEncounter={setEnc} characters={characters} onSpendSlot={spendCharSlot} onUseScroll={useScroll} onRest={restAll} onUpdateChar={saveCharacter} portraits={Object.fromEntries(allChars.map((c) => [c.id, c.portrait]))} onRecap={note} onDrops={(items, source) => { setPendingLoot((xs) => [...items, ...xs].slice(0, 40)); void source }} />}
+        {tab === 'battle' && <Battle encounter={encounter} setEncounter={setEnc} characters={characters} onSpendSlot={spendCharSlot} onUseScroll={useScroll} onRest={restAll} onUpdateChar={saveCharacter} portraits={Object.fromEntries(allChars.map((c) => [c.id, c.portrait]))} onRecap={note} onRouteLoot={routeLoot} />}
         {tab === 'characters' && (
           <>
-            <Characters characters={characters} onSave={saveCharacter} onDelete={deleteCharacter} giveTargets={allChars.map((c) => ({ id: c.id, name: c.name }))} onGive={giveBetween} customBudget={customBudget} onBudget={setBudget} allowReroll={allowReroll} onAllowReroll={setAllowReroll} party={party} onParty={saveParty} canToggleParty={!online || isDM} onTransfer={transferCoins} onRecap={note} />
+            <Characters characters={characters} onSave={saveCharacter} onDelete={deleteCharacter} giveTargets={allChars.map((c) => ({ id: c.id, name: c.name }))} onGive={giveBetween} customBudget={customBudget} onBudget={setBudget} allowReroll={allowReroll} onAllowReroll={setAllowReroll} party={party} onParty={saveParty} canToggleParty={!online || isDM} onTransfer={transferCoins} onRecap={note} isDM={!online || isDM} library={library} onSaveOrigin={saveOrigin} roster={allChars} onAcceptTrade={acceptOffer} onDeclineTrade={declineOffer} />
             {hasSamples && <div className="center pad"><button className="btn ghost danger" onClick={removeSamples}>Remove all sample data</button></div>}
           </>
         )}
         {tab === 'dice' && <Dice history={history} setHistory={setHistory} />}
-        {tab === 'campaign' && <Campaign pages={pages} setPages={setPages} />}
-        {tab === 'loot' && <Loot chests={chests} saveChest={saveChest} deleteChest={deleteChest} characters={allChars} onGiveItem={giveItemTo} onGiveCoins={giveCoinsTo} readOnly={online && !isDM} online={online} onOpenReveal={() => setDismissedReveal(null)} onSaveChar={saveCharacter} pendingLoot={pendingLoot} onPendingLoot={setPendingLoot} onRecap={note} />}
-        {tab === 'casino' && <Casino characters={characters} adjust={adjustCoins} />}
+        {tab === 'campaign' && <Campaign pages={pages} setPages={setPages} note={sharedNote} onSaveNote={saveNote} author={author} />}
+        {tab === 'loot' && <Loot chests={chests} saveChest={saveChest} deleteChest={deleteChest} characters={allChars} onGiveItem={giveItemTo} onGiveCoins={giveCoinsTo} readOnly={online && !isDM} online={online} onOpenReveal={() => setDismissedReveal(null)} onSaveChar={saveCharacter} pendingLoot={pendingLoot} onPendingLoot={setPendingLoot} onRecap={note} merchants={town.merchants} />}
+        {tab === 'casino' && <Casino characters={casinoChars} adjust={adjustCoins} table={casinoTable} isDealer={!online || isDM} localIds={casinoChars.map((c) => c.id)} onCommit={commitTable} onAct={sendCasino} />}
         {tab === 'town' && <Town characters={allChars} town={town} onTown={saveTown} onSave={saveCharacter} isDM={!online || isDM} onRecap={note} />}
         {tab === 'rules' && <Rules recap={recap} onClearRecap={() => { setRecap([]); pushHomebrew({ recap: [] }) }} />}
       </main>

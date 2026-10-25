@@ -1,4 +1,5 @@
 // Town wishing fountain. The accepting threshold is rolled from a short list and kept off the main UI.
+import type { Merchant } from './favor'
 import type { Item } from './types'
 import { uid } from './types'
 
@@ -17,6 +18,8 @@ export interface TownState {
   places: TownPlace[]
   currentId: string
   fountain: FountainState
+  /** Merchants added at the table. The built-in four are always available. */
+  merchants?: Merchant[]
 }
 
 export function defaultTown(): TownState {

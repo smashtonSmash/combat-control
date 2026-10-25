@@ -61,7 +61,7 @@ export interface Item {
   // weapon
   damage?: string
   damageType?: DamageType
-  // consumable: dice healed on use, e.g. 2d4+2
+  // consumable: dice healed on use, e.g. 2d6+2
   heal?: string
   // scroll
   scroll?: ScrollData
@@ -130,6 +130,8 @@ export interface Character extends ArmorFields {
   traits: Trait[]
   attacks: Attack[]
   notes: string
+  /** Appearance and other customization. Separate from notes. */
+  details?: string
   sample?: boolean
   /** true = AC typed by hand, don't auto-calc from armor */
   acManual?: boolean
@@ -146,7 +148,7 @@ export interface Character extends ArmorFields {
   /** slots edited by hand; don't auto-fill from class/level */
   slotsManual?: boolean
   // ---- origins (race / class / background) ----
-  origin?: { raceKey?: string; subraceKey?: string; raceBonus?: Partial<Abilities>; classKey?: string; bgKey?: string; bgBonus?: Partial<Abilities> }
+  origin?: { raceKey?: string; subraceKey?: string; raceBonus?: Partial<Abilities>; classKey?: string; bgKey?: string; bgBonus?: Partial<Abilities>; /** player allocates ability bonuses instead of the printed racial ones */ noStandardBonus?: boolean; skillChoice?: { choose: number; from: string[] } }
   /** scores before race/background bonuses (abilities = base + bonuses) */
   baseAbilities?: Abilities
   background?: string
@@ -163,8 +165,19 @@ export interface Character extends ArmorFields {
   abilityGen?: import('./components/AbilityGen').GenState
   /** active potion / scroll effects (cleared by long rest or End combat) */
   effects?: ActiveEffect[]
-  /** merchantId → favor 0–100. Higher favor, better prices. PLACEHOLDER scale. */
+  /** merchantId → favor, −100 to +100. 0 is neutral. Low enough and the merchant refuses to sell. */
   favor?: Record<string, number>
+  /** Offers this character has made. The item stays here until the other person accepts. */
+  trades?: ItemTrade[]
+}
+
+export interface ItemTrade {
+  id: string
+  toId: string
+  toName: string
+  itemId: string
+  itemName: string
+  at: number
 }
 
 export interface ActiveEffect {

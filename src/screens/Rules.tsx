@@ -3,7 +3,7 @@ import { TIERS, TIER_COLORS, TIER_LABELS, SPECIAL_LABELS, SPECIAL_COLORS } from 
 import { ARMOR_DURABILITY, BROKEN_REPAIR_MULT, CONSUMABLES, DAMAGED_AT, FIELD_REPAIR_DICE, FUSE_FEES, REPAIR_COST_PER_POINT, WEAPON_DURABILITY, WEAPON_MISS_WEAR, WEAR } from '../catalog'
 import { MATERIALS, MATERIALS_PER_KIT, SALVAGE_REFUND_SILVER } from '../salvage'
 import { FOUNTAIN_THRESHOLDS } from '../fountain'
-import { MERCHANTS } from '../favor'
+import { FAVOR_MIN, FAVOR_MAX, MERCHANTS, REFUSE_FAVOR } from '../favor'
 import { LOOT_TABLES } from '../lootTables'
 import { RECAP_LABEL, type RecapEvent } from '../recap'
 
@@ -64,8 +64,8 @@ export default function Rules({ recap, onClearRecap }: { recap: RecapEvent[]; on
         <ul className="rules-list">
           <li><b>Accessories.</b> Helmet, gauntlets, and boots are their own slots. A helmet’s AC is flat. It is not worn under armor.</li>
           <li><b>Slots.</b> PLACEHOLDER capacity = Strength score. Armor is 1 slot. Greatsword and greataxe are 2. Identical potions share one slot. Going over is a warning, not a hard block, so taking loot still works.</li>
-          <li><b>Merchants.</b> {MERCHANTS.map((m) => `${m.name} (${m.style}, starts at ${m.baseAdjust > 0 ? '+' : ''}${m.baseAdjust}%)`).join('; ')}. PLACEHOLDER: every 5 favor removes 1% from that markup.</li>
-          <li><b>Loot.</b> {LOOT_TABLES.map((t) => `${t.name} gear ${(t.gearChance * 100).toFixed(0)}% / parts ${(t.partChance * 100).toFixed(0)}%`).join('; ')}. A miss on the roll means nothing. Goblins can drop a Common weapon or “Goblin Something”.</li>
+          <li><b>Merchants.</b> {MERCHANTS.map((m) => `${m.name} (${m.style}, starts at ${m.baseAdjust > 0 ? '+' : ''}${m.baseAdjust}%)`).join('; ')}. Favor runs {FAVOR_MIN} to +{FAVOR_MAX} and starts at 0 in the center. PLACEHOLDER: every 5 favor removes 1% from that markup. At {REFUSE_FAVOR} or lower they refuse to sell. The DM can add a merchant by name and trade.</li>
+          <li><b>Loot.</b> {LOOT_TABLES.filter((t) => t.kind === 'monster').map((t) => `${t.name} gear ${(t.gearChance * 100).toFixed(0)}% / parts ${(t.partChance * 100).toFixed(0)}%`).join('; ')}. Roll it from the Battle tab with <b>Roll loot</b>. Nothing drops just because HP hits 0. A miss means the table came up empty. The DM sends a hit to the chest or a character.</li>
           <li><b>Party stash.</b> DM toggle. Shared coins and a shared pack, plus person-to-person coin gifts.</li>
           <li><b>Player names.</b> Sheets show “Character (Player)” when we know who is playing. Signed in, that is the campaign member’s display name. Offline, the DM can type an optional player name. Blank stays blank.</li>
           <li><b>Fountain.</b> Towns only, and only when that town’s flag is on. Secret threshold is a fresh pick from {FOUNTAIN_THRESHOLDS.join(', ')} gold. The prize is <b>PLACEHOLDER (TBD)</b>.</li>

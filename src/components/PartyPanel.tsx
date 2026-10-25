@@ -45,14 +45,14 @@ export function PartyPanel({ characters, party, onParty, onSave, canToggle, onRe
     onSave(r.char); onParty(r.stash); onRecap?.(r.message)
   }
   return (
-    <div className="panel party-panel">
+    <details className="panel party-panel subtle">
+      <summary>🎒 Party stash and shared gold <small className="muted">{party.shared ? `${party.gold}g ${party.silver}s` : 'personal purses'}</small></summary>
       <div className="row between">
-        <b>🎒 Party stash</b>
         {canToggle
-          ? <label className="row small"><input type="checkbox" checked={party.shared} onChange={(e) => onParty({ ...party, shared: e.target.checked })} /> Shared gold & inventory</label>
+          ? <label className="row small"><input type="checkbox" checked={party.shared} onChange={(e) => onParty({ ...party, shared: e.target.checked })} /> Shared gold and inventory</label>
           : <span className="small muted">{party.shared ? 'Shared pool is on' : 'Personal purses'}</span>}
       </div>
-      <div className="small muted">Optional. Off, everyone keeps their own coins. On, the pool below is the party’s. Players can still hand coins to each other from a character sheet.</div>
+      <div className="small muted">Optional. Off, everyone keeps their own coins. On, the pool below is the party’s.</div>
       {party.shared && (
         <>
           <div className="coins">
@@ -88,6 +88,6 @@ export function PartyPanel({ characters, party, onParty, onSave, canToggle, onRe
         </>
       )}
       {msg && <div className="inv-msg">{msg}</div>}
-    </div>
+    </details>
   )
 }

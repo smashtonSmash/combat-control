@@ -24,9 +24,14 @@ describe('pricing', () => {
     expect(r.ok).toBe(true); expect(r.char.purse).toEqual({ gold: 1, silver: 5 }); expect(r.char.inventory![0].name).toBe('Rare Healing Potion')
     expect(buy(hero({ purse: { gold: 5, silver: 0 } }), catalogToItem(catalogItem('heal-blue')!), 350).ok).toBe(false)
   })
-  it('migrates old Potion of Healing to Green Healing Potion', () => {
-    const c = migrateInventory(hero({ inventory: [{ id: 'p', name: 'Potion of Healing', kind: 'consumable', qty: 2, heal: '2d4+2', description: '' }] }))
-    expect(c.inventory![0]).toMatchObject({ name: 'Common Healing Potion', heal: '2d8+2', catalogKey: 'heal-green', qty: 2, tier: 'green' })
+  it('migrates old common healing potions to 2d6+2', () => {
+    const old = migrateInventory(hero({ inventory: [{ id: 'p', name: 'Potion of Healing', kind: 'consumable', qty: 2, heal: '2d4+2', description: '' }] }))
+    expect(old.inventory![0]).toMatchObject({ name: 'Common Healing Potion', heal: '2d6+2', catalogKey: 'heal-green', qty: 2, tier: 'green' })
+    const eight = migrateInventory(hero({ inventory: [{ id: 'g', name: 'Common Healing Potion', kind: 'consumable', qty: 1, heal: '2d8+2', tier: 'green', description: '' }] }))
+    expect(eight.inventory![0].heal).toBe('2d6+2')
+    const greater = hero({ inventory: [{ id: 'b', name: 'Rare Healing Potion', kind: 'consumable', qty: 1, heal: '4d4+4', tier: 'blue', description: '' }] })
+    expect(migrateInventory(greater)).toBe(greater)
+    expect(catalogItem('heal-green')!.effect).toMatchObject({ kind: 'heal', dice: '2d6+2' })
   })
 })
 

@@ -1,6 +1,6 @@
 import type { Character } from '../types'
 import { uid } from '../types'
-import { ABIL_KEYS, ABIL_NAMES, BACKGROUNDS, CLASSES, RACES, applyBonuses, bgBudget, bgDef, chooseBackground, chooseClass, chooseRace, classDef, fixedRaceBonus, raceBudget, raceDef, suggestedHp, sumBonus, type Bonus, type Feature } from '../origins'
+import { ABIL_KEYS, ABIL_NAMES, BACKGROUNDS, CLASSES, RACES, SKILLS, applyBonuses, applySavedOrigin, bgBudget, bgDef, captureOrigin, chooseBackground, chooseClass, chooseRace, classDef, classSkillPicks, fixedRaceBonus, raceBudget, raceDef, skillChoiceOf, suggestedHp, sumBonus, toggleSkill, type Bonus, type Feature, type SavedOrigin } from '../origins'
 import { TextField } from './Sheet'
 
 const SRC_ICON: Record<Feature['source'], string> = { race: '🧬', class: '⚔️', background: '📖', custom: '✦' }
@@ -30,44 +30,77 @@ export function BonusAllocator({ label, value, budget, onChange }: { label: stri
   )
 }
 
-export function OriginsPanel({ d, setD, customBudget }: { d: Character; setD: (c: Character) => void; customBudget: number }) {
+function OriginSelect({ label, value, srd, other, saved, onChange }: {
+  label: string; value: string; srd: { key: string; name: string }[]; other: { key: string; name: string }[]
+  saved: SavedOrigin[]; onChange: (v: string) => void
+}) {
+  return (
+    <label className="field"><span>{label}</span>
+      <select aria-label={label} value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">— Choose —</option>
+        <optgroup label="SRD">{srd.map((r) => <option key={r.key} value={r.key}>{r.name}</option>)}</optgroup>
+        <optgroup label="Other">{other.map((r) => <option key={r.key} value={r.key}>{r.name}</option>)}</optgroup>
+        {saved.length > 0 && <optgroup label="Saved">{saved.map((r) => <option key={r.id} value={'lib:' + r.id}>{r.name}</option>)}</optgroup>}
+        <option value="custom">Custom…</option>
+      </select></label>
+  )
+}
+
+export function OriginsPanel({ d, setD, customBudget, library = [], onSaveOrigin }: {
+  d: Character; setD: (c: Character) => void; customBudget: number
+  library?: SavedOrigin[]; onSaveOrigin?: (e: SavedOrigin) => void
+}) {
   const race = raceDef(d.origin?.raceKey), cls = classDef(d.origin?.classKey), bg = bgDef(d.origin?.bgKey)
   const rb = raceBudget(d, customBudget), bb = bgBudget(d, customBudget)
   const fixed = fixedRaceBonus(d)
   const hp = suggestedHp(d)
-  const pickSkills = cls?.skillChoice
-  const classSkills = (d.skills ?? []).filter((s) => pickSkills?.from.includes(s) && !bg?.skills.includes(s))
+  const pickSkills = skillChoiceOf(d)
+  const classSkills = classSkillPicks(d)
+  const saved = (kind: SavedOrigin['kind']) => library.filter((e) => e.kind === kind)
+  const pickSaved = (kind: SavedOrigin['kind'], v: string, choose: (key: string) => Character) => {
+    if (v.startsWith('lib:')) {
+      const entry = library.find((e) => e.kind === kind && e.id === v.slice(4))
+      if (entry) setD(applySavedOrigin(d, entry))
+      return
+    }
+    setD(choose(v))
+  }
+  const saveKind = (kind: SavedOrigin['kind']) => {
+    const entry = captureOrigin(d, kind)
+    if (entry) onSaveOrigin?.(entry)
+  }
   return (
     <div className="panel origins">
       <b>🧬 Origins</b>
-      <label className="field"><span>Race</span>
-        <select aria-label="Race" value={d.origin?.raceKey ?? ''} onChange={(e) => setD(chooseRace(d, e.target.value))}>
-          <option value="">— Choose —</option>
-          <optgroup label="SRD">{RACES.filter((r) => r.srd).map((r) => <option key={r.key} value={r.key}>{r.name}</option>)}</optgroup>
-          <optgroup label="Other (name only)">{RACES.filter((r) => !r.srd).map((r) => <option key={r.key} value={r.key}>{r.name}</option>)}</optgroup>
-          <option value="custom">Custom…</option>
-        </select></label>
+      <p className="small muted">SRD means System Reference Document — the free official options. Other is the rest of the common book list, with the usual bonuses and traits.</p>
+      <OriginSelect label="Race" value={d.origin?.raceKey ?? ''} srd={RACES.filter((r) => r.srd)} other={RACES.filter((r) => !r.srd)} saved={saved('race')}
+        onChange={(v) => pickSaved('race', v, (key) => chooseRace(d, key))} />
       {race?.subraces && race.subraces.length > 0 && (
         <label className="field"><span>Subrace</span>
           <select aria-label="Subrace" value={d.origin?.subraceKey ?? ''} onChange={(e) => setD(chooseRace(d, race.key, e.target.value))}>
             {race.subraces.map((s) => <option key={s.key} value={s.key}>{s.name}</option>)}
           </select></label>
       )}
-      {(d.origin?.raceKey === 'custom' || (race && !race.srd)) && <TextField label={d.origin?.raceKey === 'custom' ? 'Custom race name' : 'Race name'} value={d.race} onChange={(v) => setD({ ...d, race: v })} placeholder="Half-dragon" />}
-      {Object.keys(fixed).length > 0 && <div className="small">Racial bonuses: <b className="gold">{Object.entries(fixed).map(([k, v]) => `${k.toUpperCase()} +${v}`).join(', ')}</b></div>}
-      {rb && <BonusAllocator label={race?.srd ? `${race.name}: choose ${rb.total} abilities (+1 each)` : 'Race ability bonuses'} value={d.origin?.raceBonus} budget={rb}
+      {(d.origin?.raceKey === 'custom' || d.origin?.raceKey?.startsWith('lib:')) && <TextField label="Custom race name" value={d.race} onChange={(v) => setD({ ...d, race: v })} placeholder="Half-dragon" />}
+      {d.origin?.raceKey && (
+        <label className="row small">
+          <input type="checkbox" checked={!!d.origin?.noStandardBonus} onChange={(e) => setD(applyBonuses({ ...d, origin: { ...d.origin, noStandardBonus: e.target.checked, raceBonus: {} } }))} />
+          Opt out of standard racial trait bonuses and assign my own
+        </label>
+      )}
+      {Object.keys(fixed).length > 0 && <div className="small">Racial bonuses: <b className="gold">{Object.entries(fixed).map(([k, v]) => `${k.toUpperCase()} ${v > 0 ? '+' : ''}${v}`).join(', ')}</b></div>}
+      {rb && <BonusAllocator label={d.origin?.noStandardBonus ? 'Custom racial bonuses' : race?.srd ? `${race.name}: choose ${rb.total} ${rb.total === 1 ? 'ability' : 'abilities'} (+1 each)` : 'Race ability bonuses'} value={d.origin?.raceBonus} budget={rb}
         onChange={(b) => setD(applyBonuses({ ...d, origin: { ...d.origin, raceBonus: b } }))} />}
+      {onSaveOrigin && (d.origin?.raceKey === 'custom' || d.origin?.raceKey?.startsWith('lib:')) && d.race.trim() && (
+        <button type="button" className="btn ghost sm" onClick={() => saveKind('race')}>Save this race to the library</button>
+      )}
 
-      <label className="field"><span>Class</span>
-        <select aria-label="Class" value={d.origin?.classKey ?? ''} onChange={(e) => {
-          const n = chooseClass(d, e.target.value), s = suggestedHp(n)
+      <OriginSelect label="Class" value={d.origin?.classKey ?? ''} srd={CLASSES.filter((c) => c.srd)} other={CLASSES.filter((c) => !c.srd)} saved={saved('class')}
+        onChange={(v) => {
+          if (v.startsWith('lib:')) { pickSaved('class', v, (key) => chooseClass(d, key)); return }
+          const n = chooseClass(d, v), s = suggestedHp(n)
           setD(s && (d.maxHp === 10 || d.maxHp === suggestedHp(d)) ? { ...n, maxHp: s, currentHp: s } : n)
-        }}>
-          <option value="">— Choose —</option>
-          <optgroup label="SRD">{CLASSES.filter((c) => c.srd).map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}</optgroup>
-          <optgroup label="Other (name only)">{CLASSES.filter((c) => !c.srd).map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}</optgroup>
-          <option value="custom">Custom…</option>
-        </select></label>
+        }} />
       {d.origin?.classKey === 'custom' && (
         <div className="grid2">
           <TextField label="Custom class name" value={d.cls} onChange={(v) => setD({ ...d, cls: v })} placeholder="Gunslinger" />
@@ -79,30 +112,45 @@ export function OriginsPanel({ d, setD, customBudget }: { d: Character; setD: (c
         <div className="small">Hit die <b>d{d.hitDie}</b>{d.saves?.length ? <> · Saves <b>{d.saves.map((s) => s.toUpperCase()).join(', ')}</b></> : null}
           {hp !== null && <> · Suggested HP <b>{hp}</b> {d.maxHp !== hp && <button className="link small" onClick={() => setD({ ...d, maxHp: hp, currentHp: hp })}>use {hp}</button>}</>}</div>
       )}
+      {d.saves && d.saves.length > 0 && d.origin?.classKey !== 'custom' && (
+        <div className="chips-row wrap" aria-label="Saving throws"><span className="small muted">Saves (automatic):</span>{d.saves.map((k) => <span key={k} className="chip on">{k.toUpperCase()}</span>)}</div>
+      )}
       {d.origin?.classKey === 'custom' && (
         <div className="chips-row wrap"><span className="small muted">Saves:</span>{ABIL_KEYS.map((k) => <button key={k} type="button" className={'chip ' + (d.saves?.includes(k) ? 'on' : '')}
           onClick={() => setD({ ...d, saves: d.saves?.includes(k) ? d.saves.filter((x) => x !== k) : [...(d.saves ?? []), k] })}>{k.toUpperCase()}</button>)}</div>
       )}
+      {onSaveOrigin && (d.origin?.classKey === 'custom' || d.origin?.classKey?.startsWith('lib:')) && d.cls.trim() && (
+        <button type="button" className="btn ghost sm" onClick={() => saveKind('class')}>Save this class to the library</button>
+      )}
       {pickSkills && (
-        <div>
-          <div className="small muted">Class skills: choose {pickSkills.choose} ({classSkills.length}/{pickSkills.choose})</div>
+        <div className="skill-pick">
+          <div className="row between"><b>Class skills</b><span className={'small ' + (classSkills.length === pickSkills.choose ? 'gold' : '')}>{classSkills.length}/{pickSkills.choose} chosen</span></div>
+          <p className="small">Choose {pickSkills.choose} from the {cls?.name || d.cls || 'class'} list. Background skills are already filled in and do not use these picks. You can change this list any time.</p>
           <div className="chips-row wrap">{pickSkills.from.map((s) => {
-            const fromBg = bg?.skills.includes(s), on = (d.skills ?? []).includes(s)
-            return <button key={s} type="button" disabled={fromBg || (!on && classSkills.length >= pickSkills.choose)} className={'chip ' + (on ? 'on' : '')}
-              onClick={() => setD({ ...d, skills: on ? (d.skills ?? []).filter((x) => x !== s) : [...(d.skills ?? []), s] })}>{s}{fromBg ? ' 📖' : ''}</button>
+            const fromBg = bg?.skills.includes(s) && (d.skills ?? []).includes(s)
+            const on = (d.skills ?? []).includes(s)
+            return <button key={s} type="button" disabled={!!fromBg || (!on && classSkills.length >= pickSkills.choose)} className={'chip skill-chip ' + (on ? 'on' : '')}
+              onClick={() => setD(toggleSkill(d, s))}>{on ? '● ' : '○ '}{s}{fromBg ? ' · background' : ''}</button>
           })}</div>
         </div>
       )}
+      <details className="skill-all" open={!pickSkills}>
+        <summary>Edit the full skill list</summary>
+        <p className="small muted">Any skill can be turned on or off later. Class picks above still stop at {pickSkills ? pickSkills.choose : 'the class number'}.</p>
+        <div className="chips-row wrap">{SKILLS.map(([s]) => {
+          const on = (d.skills ?? []).includes(s)
+          return <button key={s} type="button" className={'chip skill-chip ' + (on ? 'on' : '')} onClick={() => setD(toggleSkill(d, s))}>{on ? '●' : '○'} {s}</button>
+        })}</div>
+      </details>
 
-      <label className="field"><span>Background</span>
-        <select aria-label="Background" value={d.origin?.bgKey ?? ''} onChange={(e) => setD(chooseBackground(d, e.target.value))}>
-          <option value="">— Choose —</option>
-          <optgroup label="SRD">{BACKGROUNDS.filter((b) => b.srd).map((b) => <option key={b.key} value={b.key}>{b.name}</option>)}</optgroup>
-          <optgroup label="Other (name + skills only)">{BACKGROUNDS.filter((b) => !b.srd).map((b) => <option key={b.key} value={b.key}>{b.name}</option>)}</optgroup>
-          <option value="custom">Custom…</option>
-        </select></label>
-      {d.origin?.bgKey === 'custom' && <TextField label="Custom background name" value={d.background ?? ''} onChange={(v) => setD({ ...d, background: v })} placeholder="Wandering cartographer" />}
-      {bg && <div className="small">Background skills: <b>{bg.skills.join(', ')}</b></div>}
+      <OriginSelect label="Background" value={d.origin?.bgKey ?? ''} srd={BACKGROUNDS.filter((b) => b.srd)} other={BACKGROUNDS.filter((b) => !b.srd)} saved={saved('background')}
+        onChange={(v) => pickSaved('background', v, (key) => chooseBackground(d, key))} />
+      {(d.origin?.bgKey === 'custom' || d.origin?.bgKey?.startsWith('lib:')) && <TextField label="Custom background name" value={d.background ?? ''} onChange={(v) => setD({ ...d, background: v })} placeholder="Wandering cartographer" />}
+      {onSaveOrigin && (d.origin?.bgKey === 'custom' || d.origin?.bgKey?.startsWith('lib:')) && (d.background ?? '').trim() && (
+        <button type="button" className="btn ghost sm" onClick={() => saveKind('background')}>Save this background to the library</button>
+      )}
+      {bg && <div className="small">Background skills (automatic): <b>{bg.skills.join(', ')}</b>{bg.feature ? <> · {bg.feature.name}</> : null}</div>}
+      {!bg && d.origin?.bgKey?.startsWith('lib:') && d.background && <div className="small">Background: <b>{d.background}</b></div>}
       {bb && <BonusAllocator label="Background ability bonuses" value={d.origin?.bgBonus} budget={bb} onChange={(b) => setD(applyBonuses({ ...d, origin: { ...d.origin, bgBonus: b } }))} />}
     </div>
   )
