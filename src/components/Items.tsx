@@ -6,6 +6,7 @@ import type { DamageType, Item, ItemKind } from '../types'
 import { DAMAGE_TYPES, uid } from '../types'
 import { ARMOR_CATALOG, RARITY_OPTIONS, TIERS, TIER_COLORS, TIER_SHORT, type Tier } from '../armor'
 import { COMMON_WEAPONS, KIND_ICON, armorItem, potionOfHealing, scrollItem, weaponItem } from '../inventory'
+import { itemArtSrc } from '../itemArt'
 import { accessoryItem } from '../accessories'
 import { materialItem } from '../salvage'
 import { pinkCoin, pinkLantern, whisperfang } from '../specialGear'
@@ -14,6 +15,13 @@ import { fromSrd, loadSpells, type CharSpell, type SrdSpell } from '../spells'
 import { CustomSpell } from './Spells'
 import { DAMAGE_ICONS } from '../types'
 import { CONSUMABLES, armorPrice, catalogToItem, displayName, itemPrice } from '../catalog'
+
+/** PNG when one exists; emoji if art is missing or fails to load. */
+export function ItemArt({ src, fallback }: { src: string | null; fallback: string }) {
+  const [broken, setBroken] = useState<string | null>(null)
+  if (!src || broken === src) return fallback
+  return <img src={src} alt="" draggable={false} onError={() => setBroken(src)} />
+}
 
 export function ItemCard({ it, selected, onClick, onPointerDown, dragging }: {
   it: Item; selected?: boolean; onClick?: () => void; onPointerDown?: (e: React.PointerEvent) => void; dragging?: boolean
@@ -25,7 +33,7 @@ export function ItemCard({ it, selected, onClick, onPointerDown, dragging }: {
       style={color ? { borderColor: color, boxShadow: `0 0 10px ${color}55` } : undefined}
       onClick={onClick} onPointerDown={onPointerDown} onContextMenu={(e) => e.preventDefault()}>
       {it.equipped && <span className="eq-ribbon">EQUIPPED</span>}
-      <span className="item-icon">{KIND_ICON[it.kind]}</span>
+      <span className="item-icon"><ItemArt src={itemArtSrc(it)} fallback={KIND_ICON[it.kind]} /></span>
       <span className="item-name">{it.name}</span>
       <small className="item-sub">{it.scroll?.kind === 'spell' ? `${it.scroll.spell.level ? 'lv ' + it.scroll.spell.level : 'cantrip'} scroll` : it.kind === 'weapon' ? `${it.damage} ${it.damageType}` : it.heal ? `heals ${it.heal}` : rarity ? <span style={{ color }}>◆ {rarity.label}</span> : it.materialKey ? 'material' : it.kind}</small>
       {it.qty > 1 && <span className="qty">×{it.qty}</span>}

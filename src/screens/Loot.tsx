@@ -4,7 +4,8 @@ import { ChestArt } from '../components/ChestArt'
 import { useEffect, useRef, useState } from 'react'
 import type { Character, Chest, Item } from '../types'
 import { uid } from '../types'
-import { ItemCard, ItemPicker } from '../components/Items'
+import { ItemArt, ItemCard, ItemPicker } from '../components/Items'
+import { POUCH_ART_SRC } from '../itemArt'
 import { Sheet, Stepper } from '../components/Sheet'
 import { fmtCoins, purseTotal } from '../casino/money'
 import { coinsToSilver, splitEvenly, takeFrom } from '../loot'
@@ -129,7 +130,7 @@ export default function Loot({ chests, saveChest, deleteChest, characters, onGiv
                 onPointerDown={(e) => startDrag(e, { kind: 'pouch', id: q.id })} onClick={() => tapPayload({ kind: 'pouch', id: q.id })} onContextMenu={(e) => e.preventDefault()}>
                 {!readOnly && <span className="pouch-x" role="button" aria-label="Delete pouch (coins go back)" onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => { e.stopPropagation(); saveChest({ ...chest, gold: chest.gold + q.gold, silver: chest.silver + q.silver, pouches: (chest.pouches ?? []).filter((x) => x.id !== q.id), updated: Date.now() }); setArmed(null) }}>✕</span>}
-                <span className="item-icon">👝</span>
+                <span className="item-icon"><ItemArt src={POUCH_ART_SRC} fallback="👝" /></span>
                 <span className="item-name">Coin pouch</span>
                 <small className="item-sub pouch-amt">{q.gold ? <b className="g">{q.gold}g</b> : null} {q.silver ? <b className="s">{q.silver}s</b> : null}</small>
               </button>
