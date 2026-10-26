@@ -1,10 +1,11 @@
 import { DAMAGE_TYPES, DAMAGE_ICONS } from '../types'
 import { TIERS, TIER_COLORS, TIER_LABELS, SPECIAL_LABELS, SPECIAL_COLORS } from '../armor'
-import { ARMOR_DURABILITY, BROKEN_REPAIR_MULT, CONSUMABLES, DAMAGED_AT, FIELD_REPAIR_DICE, FUSE_FEES, REPAIR_COST_PER_POINT, WEAPON_DURABILITY, WEAPON_MISS_WEAR, WEAR } from '../catalog'
-import { MATERIALS, MATERIALS_PER_KIT, SALVAGE_REFUND_SILVER } from '../salvage'
+import { ARMOR_HP, BROKEN_REPAIR_MULT, CONSUMABLES, CRAFT_GOLD, DAMAGED_AT, FIELD_REPAIR_DICE, KIT_DICE, KIT_PRICES, MERGE_FEE_SILVER, REPAIR_COST_PER_POINT, SALVAGE_RICH_ABOVE, UPGRADE_FEES, UPGRADE_MULT, WEAPON_HP, WEAPON_MISS_WEAR, WEAR } from '../catalog'
+import { MATERIALS_PER_KIT, MAT_LABELS, MAT_TIERS } from '../salvage'
 import { FOUNTAIN_THRESHOLDS } from '../fountain'
 import { FAVOR_MIN, FAVOR_MAX, MERCHANTS, REFUSE_FAVOR } from '../favor'
-import { LOOT_TABLES } from '../lootTables'
+import { MONSTER_PIES } from '../lootTables'
+import { INSPIRATION_SLOTS } from '../inspiration'
 import { RECAP_LABEL, type RecapEvent } from '../recap'
 
 function money(silver: number) {
@@ -28,11 +29,11 @@ export default function Rules({ recap, onClearRecap }: { recap: RecapEvent[]; on
       <section className="panel">
         <h3>Rarity</h3>
         <ul className="rules-list">
-          {TIERS.map((t) => <li key={t}><b style={{ color: TIER_COLORS[t] }}>{TIER_LABELS[t]}</b> — id <code>{t}</code>. Armor durability {ARMOR_DURABILITY[t]}, repair {REPAIR_COST_PER_POINT[t]}g per point. Weapon durability {WEAPON_DURABILITY[t]} (PLACEHOLDER, same table).</li>)}
-          <li><b style={{ color: SPECIAL_COLORS.pink }}>{SPECIAL_LABELS.pink}</b> — unique abilities. Not stronger than Mythic, and not a fuse step.</li>
+          {TIERS.map((t) => <li key={t}><b style={{ color: TIER_COLORS[t] }}>{TIER_LABELS[t]}</b> — id <code>{t}</code>. Repair {REPAIR_COST_PER_POINT[t]}g per missing point. Light / medium / heavy armor HP {ARMOR_HP.light[t]}/{ARMOR_HP.medium[t]}/{ARMOR_HP.heavy[t]}. Weapon HP light/standard/heavy {WEAPON_HP.light[t]}/{WEAPON_HP.standard[t]}/{WEAPON_HP.heavy[t]} (PLACEHOLDER lowball).</li>)}
+          <li><b style={{ color: SPECIAL_COLORS.pink }}>{SPECIAL_LABELS.pink}</b> — unique abilities. Not stronger than Mythic, and not an upgrade step.</li>
           <li><b style={{ color: SPECIAL_COLORS.black }}>{SPECIAL_LABELS.black}</b> — a named item with a will. The owner must sync or they cannot use it. Mythic stays the top of the normal ladder.</li>
         </ul>
-        <p className="small">Damaged armor (at or below {DAMAGED_AT * 100}% durability) is −1 AC. Broken (0) can’t be worn. Broken repair costs ×{BROKEN_REPAIR_MULT}.</p>
+        <p className="small">Damaged armor and shields (at or below {DAMAGED_AT * 100}% durability) are −1 AC. Half plate at legendary or mythic uses 25% instead. Broken (0) can’t be worn. Broken gold repair costs ×{BROKEN_REPAIR_MULT}. Salvage pays the rich bundle only above {SALVAGE_RICH_ABOVE * 100}%.</p>
       </section>
 
       <section className="panel">
@@ -40,17 +41,19 @@ export default function Rules({ recap, onClearRecap }: { recap: RecapEvent[]; on
         <ul className="rules-list">
           <li>Armor wears when the wearer is <b>hit</b>: {WEAR.hit} (hit), {WEAR.weakType} (a type the armor is weak to), {WEAR.crit} (crit), {WEAR.weakCrit} (weak crit).</li>
           <li>Weapons wear when the attack <b>misses</b> AC: −{WEAPON_MISS_WEAR}. A hit does not wear a weapon.</li>
-          <li>Field Repair Kit ({FIELD_REPAIR_DICE} during a short rest) still can’t fix Broken armor.</li>
-          <li>A matching tier kit, crafted from {MATERIALS_PER_KIT} materials, repairs that armor in the field, including Broken. The blacksmith’s paid repair stays available.</li>
-          <li>Fuse fees (armor and weapons, gold): {Object.entries(FUSE_FEES).map(([t, n]) => `${TIER_LABELS[t as keyof typeof TIER_LABELS]} ${n}g`).join(', ')}. Mythic does not fuse further.</li>
+          <li>Field Repair Kit ({FIELD_REPAIR_DICE} during a short rest) still can’t fix Broken armor. It is armor-only and stays in the potion list.</li>
+          <li>A tier kit is crafted from {MATERIALS_PER_KIT} materials of that tier (no gold). Same-tier dice: {TIERS.map((t) => `${TIER_LABELS[t]} ${KIT_DICE[t]}`).join(', ')}. A higher-tier kit on lower-tier gear bumps the die one step (PLACEHOLDER, not +2 flat). Kits cannot repair Broken gear — gold at the blacksmith, or Scroll of Mending Steel. Shop prices: {TIERS.map((t) => `${TIER_LABELS[t]} ${KIT_PRICES[t]}g`).join(', ')}.</li>
+          <li>Upgrade is three of the same piece → the next tier. Light fees (gold): {Object.entries(UPGRADE_FEES).map(([t, n]) => `${TIER_LABELS[t as keyof typeof TIER_LABELS]} ${n}g`).join(', ')}. Medium ×{UPGRADE_MULT.medium}, heavy ×{UPGRADE_MULT.heavy}. Weapons use the light baseline (PLACEHOLDER). Mythic does not upgrade further.</li>
+          <li>Craft gear from 4 mats of a tier plus gold: {TIERS.map((t) => `${TIER_LABELS[t]} ${CRAFT_GOLD[t]}g`).join(', ')}. Gray is merge-only. Merge three mats into the next tier for {money(MERGE_FEE_SILVER)} (PLACEHOLDER).</li>
         </ul>
       </section>
 
       <section className="panel">
-        <h3>Salvage & parts <small className="muted">PLACEHOLDER recipes</small></h3>
+        <h3>Salvage & materials</h3>
         <ul className="rules-list">
-          {MATERIALS.map((m) => <li key={m.key}>{m.note}</li>)}
-          <li>Other broken armor salvages into generic scrap of its tier. Refund instead of parts: {TIERS.map((t) => `${TIER_LABELS[t]} ${money(SALVAGE_REFUND_SILVER[t])}`).join(', ')}.</li>
+          <li>Materials are generic: {MAT_TIERS.map((t) => MAT_LABELS[t]).join(' → ')}. Legendary gear is orange. Mythic gear is red. Old typed parts (wolf pelt, goblin rag, and the rest) still count as the matching generic tier.</li>
+          <li>Broken (0): 1 mat of the item’s tier. From 1% through {SALVAGE_RICH_ABOVE * 100}%: 2 mats of that tier. Above that: those 2, plus 2 of the tier below (green’s below is gray).</li>
+          <li>Armor, weapons, and shields all salvage this way. Pink and black named gear do not.</li>
         </ul>
       </section>
 
@@ -65,7 +68,9 @@ export default function Rules({ recap, onClearRecap }: { recap: RecapEvent[]; on
           <li><b>Accessories.</b> Helmet, gauntlets, and boots are their own slots. A helmet’s AC is flat. It is not worn under armor.</li>
           <li><b>Slots.</b> PLACEHOLDER capacity = Strength score. Armor is 1 slot. Greatsword and greataxe are 2. Identical potions share one slot. Going over is a warning, not a hard block, so taking loot still works.</li>
           <li><b>Merchants.</b> {MERCHANTS.map((m) => `${m.name} (${m.style}, starts at ${m.baseAdjust > 0 ? '+' : ''}${m.baseAdjust}%)`).join('; ')}. Favor runs {FAVOR_MIN} to +{FAVOR_MAX} and starts at 0 in the center. PLACEHOLDER: every 5 favor removes 1% from that markup. At {REFUSE_FAVOR} or lower they refuse to sell. The DM can add a merchant by name and trade.</li>
-          <li><b>Loot.</b> {LOOT_TABLES.filter((t) => t.kind === 'monster').map((t) => `${t.name} gear ${(t.gearChance * 100).toFixed(0)}% / parts ${(t.partChance * 100).toFixed(0)}%`).join('; ')}. Roll it from the Battle tab with <b>Roll loot</b>. Nothing drops just because HP hits 0. A miss means the table came up empty. The DM sends a hit to the chest or a character.</li>
+          <li><b>Loot.</b> On a kill, roll the monster’s tier pie: {TIERS.filter((t) => t !== 'mythic').map((t) => `${TIER_LABELS[t]} ${Math.round(MONSTER_PIES[t].drop * 100)}%`).join('; ')}. Mythic always drops one legendary piece and has a 50% chance of an extra mythic piece. Gear is the weapon they hold or fitting armor (light splits padded / leather / studded). Pink and black are not on the tables. Roll it from the Battle tab with <b>Roll loot</b>. Nothing drops just because HP hits 0.</li>
+          <li><b>Inspiration.</b> {INSPIRATION_SLOTS} slots. The DM gives one from Town (or the character sheet). The player view plays a white orb. Spending a pip is the table’s call — the sheet only clears the slot.</li>
+          <li><b>Blacksmith.</b> Lives on the Town tab with the shop. Repair, upgrade 3→1, craft, merge, and salvage. Example merchants can be removed.</li>
           <li><b>Party stash.</b> DM toggle. Shared coins and a shared pack, plus person-to-person coin gifts.</li>
           <li><b>Player names.</b> Sheets show “Character (Player)” when we know who is playing. Signed in, that is the campaign member’s display name. Offline, the DM can type an optional player name. Blank stays blank.</li>
           <li><b>Fountain.</b> Towns only, and only when that town’s flag is on. Secret threshold is a fresh pick from {FOUNTAIN_THRESHOLDS.join(', ')} gold. The prize is <b>PLACEHOLDER (TBD)</b>.</li>

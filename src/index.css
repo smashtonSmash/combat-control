@@ -726,3 +726,24 @@ b.bad{color:#f66} b.warn,.warn{color:#f0b84a}
 .coin-flash.win{color:#7dcea0}
 .coin-flash.lose{color:#e07a6a}
 @keyframes coinpop{0%{transform:translateY(8px);opacity:0}25%{opacity:1}100%{transform:translateY(-10px);opacity:.15}}
+
+/* Town blacksmith slots */
+.blacksmith{display:flex;flex-direction:column;gap:8px}
+.bs-row{display:flex;flex-wrap:wrap;gap:8px}
+.bs-slot{min-width:92px;min-height:64px;flex:1;border:1px dashed #6b5a3e;border-radius:12px;background:#120f0c;color:inherit;padding:8px;display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left}
+.bs-slot.over{border-color:var(--gold2,#f0d58a);box-shadow:0 0 10px rgba(240,213,138,.45)}
+.bs-slot.filled{border-style:solid}
+.bs-upgrade{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bs-arrow{font-size:22px;color:var(--gold2,#f0d58a)}
+.bs-preview{min-width:120px;padding:8px;border-radius:12px;background:#1a1610;border:1px solid var(--line)}
+.inspo-pips{display:flex;gap:6px;align-items:center;justify-content:center}
+.inspo-pip{width:14px;height:14px;border-radius:50%;border:2px solid #f3ead6;background:transparent;display:inline-block}
+.inspo-pip.on{background:#fff;box-shadow:0 0 8px #fff,0 0 16px #f0d58a}
+.inspo-overlay{position:fixed;inset:0;z-index:80;pointer-events:none;display:flex;flex-direction:column;align-items:center}
+.inspo-orb{width:28px;height:28px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#fff,#f0d58a 42%,transparent 72%);box-shadow:0 0 18px #fff,0 0 36px #f0d58a;animation:inspo-drop .9s cubic-bezier(.2,.8,.2,1) forwards}
+.inspo-pop{width:8px;height:8px;border-radius:50%;margin-top:-18px;animation:inspo-pop .7s .85s ease-out forwards}
+.inspo-label{margin-top:18px;font-weight:900;color:#fff;text-shadow:0 0 8px #f0d58a;animation:inspo-label 2.2s ease both}
+@keyframes inspo-drop{0%{transform:translateY(-40px) scale(.6);opacity:0}70%{transform:translateY(38vh) scale(1);opacity:1}100%{transform:translateY(42vh) scale(1.05);opacity:1}}
+@keyframes inspo-pop{0%{box-shadow:0 0 0 0 rgba(255,255,255,.9),0 0 0 0 rgba(240,213,138,.6);opacity:1}100%{box-shadow:0 0 0 40px rgba(255,255,255,0),0 0 0 80px rgba(240,213,138,0);opacity:0}}
+@keyframes inspo-label{0%{opacity:0;transform:translateY(8px)}30%{opacity:1}80%{opacity:1}100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.inspo-orb,.inspo-pop,.inspo-label{animation:none;opacity:1;margin-top:18vh}}

@@ -1,20 +1,34 @@
 // Armor durability: wear on hits, Damaged / Broken states, repairs. Numbers live in catalog.ts.
 import type { Character, DamageType, Item } from './types'
-import { ARMOR_DURABILITY, BROKEN_REPAIR_MULT, DAMAGED_AT, REPAIR_COST_PER_POINT, WEAPON_DURABILITY, WEAR } from './catalog'
-import { TIER_SHORT } from './armor'
+import { ARMOR_HP, BROKEN_REPAIR_MULT, DAMAGED_AT, REPAIR_COST_PER_POINT, WEAPON_HP, WEAPON_SIZE_BY_ID, WEAR, type WeaponSize } from './catalog'
+import { TIER_SHORT, armorById } from './armor'
+import { shieldMaxHp } from './shields'
 
-/** Armor uses its tier. Tiered weapons use the same table (placeholder). Named black mythics use the Mythic cap. Pink uniques are not durability gear. */
+function weaponSize(it: Item): WeaponSize {
+  return (it.weaponId && WEAPON_SIZE_BY_ID[it.weaponId]) || 'standard'
+}
+
+/**
+ * Armor and shields use category × tier. Weapons use size × tier.
+ * Named black mythics use the mythic cap of their size (standard if untyped). Pink is not durability gear.
+ * PLACEHOLDER: shield bars, repair, and salvage are live. Automatic hit-wear stays on body armor until shields are told to soak hits.
+ */
 export const maxDur = (it: Item) => {
-  if (it.kind === 'weapon' && it.special === 'black') return WEAPON_DURABILITY.mythic
+  if (it.kind === 'weapon' && it.special === 'black') return WEAPON_HP[weaponSize(it)].mythic
   if (it.special) return 0
-  if (it.kind === 'armor' && it.tier) return ARMOR_DURABILITY[it.tier]
-  if (it.kind === 'weapon' && it.tier) return WEAPON_DURABILITY[it.tier]
+  if (it.kind === 'shield' && it.tier) return shieldMaxHp(it.shieldId, it.tier)
+  if (it.kind === 'armor' && it.tier) return ARMOR_HP[armorById(it.armorId)?.category ?? 'light'][it.tier]
+  if (it.kind === 'weapon' && it.tier) return WEAPON_HP[weaponSize(it)][it.tier]
   return 0
 }
 export const durOf = (it: Item) => Math.max(0, Math.min(maxDur(it), it.dur ?? maxDur(it)))
 export const isBroken = (it: Item) => maxDur(it) > 0 && durOf(it) <= 0
-/** Damaged (−1 AC) is armor only. Weapons don't take that penalty. */
-export const isDamaged = (it: Item) => it.kind === 'armor' && !!it.tier && !it.special && !isBroken(it) && durOf(it) <= maxDur(it) * DAMAGED_AT
+/** Combat Damaged (−1 AC) is armor and shields. Half plate at legendary or mythic uses ¼ instead of ½. Weapons don't take the AC penalty. */
+export function damagedFraction(it: Item): number {
+  if (it.kind === 'armor' && it.armorId === 'half-plate' && (it.tier === 'legendary' || it.tier === 'mythic')) return 0.25
+  return DAMAGED_AT
+}
+export const isDamaged = (it: Item) => (it.kind === 'armor' || it.kind === 'shield') && !!it.tier && !it.special && !isBroken(it) && durOf(it) <= maxDur(it) * damagedFraction(it)
 export const durState = (it: Item): 'ok' | 'damaged' | 'broken' => (isBroken(it) ? 'broken' : isDamaged(it) ? 'damaged' : 'ok')
 export const equippedArmor = (c?: Character) => (c?.inventory ?? []).find((i) => i.kind === 'armor' && i.equipped)
 

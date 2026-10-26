@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ARMOR_PRICES, ARMOR_PRICE_MULTIPLIER, armorPrice, catalogItem, catalogToItem, migrateInventory, shopPriceSilver, CONSUMABLES } from './catalog'
-import { applySecondWind, buy, clearEffects, fuse, useCatalogItem } from './effects'
+import { applySecondWind, buy, clearEffects, useCatalogItem } from './effects'
 import { armorItem, equip, weaponItem, COMMON_WEAPONS, useItem } from './inventory'
 import { canRaise, dropLowest, pointBuyCost, pointsLeft, roll4d6, rollSet, validPointBuy } from './abilityGen'
 import type { Character } from './types'
@@ -32,23 +32,6 @@ describe('pricing', () => {
     const greater = hero({ inventory: [{ id: 'b', name: 'Rare Healing Potion', kind: 'consumable', qty: 1, heal: '4d4+4', tier: 'blue', description: '' }] })
     expect(migrateInventory(greater)).toBe(greater)
     expect(catalogItem('heal-green')!.effect).toMatchObject({ kind: 'heal', dice: '2d6+2' })
-  })
-})
-
-describe('fusing', () => {
-  const two = (tier: 'green' | 'legendary' | 'mythic', gold = 100) => hero({ purse: { gold, silver: 0 }, inventory: [armorItem('leather', tier), armorItem('leather', tier), armorItem('padded', tier)] })
-  it('two same type+tier + fee → next tier', () => {
-    const r = fuse(two('green'), 'leather', 'green', { atForge: true })
-    expect(r.ok).toBe(true); expect(r.char.purse!.gold).toBe(85)
-    const leathers = r.char.inventory!.filter((i) => i.armorId === 'leather')
-    expect(leathers).toHaveLength(1); expect(leathers[0]).toMatchObject({ tier: 'blue', atForge: true })
-    expect(equip(r.char, leathers[0].id).armorId).toBeUndefined() // at the forge: can't equip yet
-  })
-  it('needs a pair, the fee, and a next tier', () => {
-    expect(fuse(two('green'), 'padded', 'green').ok).toBe(false)
-    expect(fuse(two('legendary', 399), 'leather', 'legendary').ok).toBe(false)
-    expect(fuse(two('legendary', 400), 'leather', 'legendary').char.inventory!.some((i) => i.tier === 'mythic')).toBe(true)
-    expect(fuse(two('mythic', 9999), 'leather', 'mythic').ok).toBe(false)
   })
 })
 

@@ -9,7 +9,7 @@ export function carryCapacity(c: { abilities?: { str?: number } }): number {
 
 export function itemSlots(it: Item): number {
   if (typeof it.slotCost === 'number') return Math.max(0, it.slotCost)
-  if (it.kind === 'armor') return 1
+  if (it.kind === 'armor' || it.kind === 'shield') return 1
   if (it.kind === 'weapon') {
     const def = it.weaponId ? weaponById(it.weaponId) : undefined
     if (def) return def.slots

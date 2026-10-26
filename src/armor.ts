@@ -48,11 +48,15 @@ export type ArmorEffect =
   | { kind: 'reduce'; type: DamageType; amount: number | 'prof'; replaces?: boolean }
   | { kind: 'acVs'; types: DamageType[]; amount: number; notUnder?: boolean } // notUnder: ignored when worn as an under-layer
   | { kind: 'deflectD6' }      // piercing hit: d6, on 6 no damage
-  | { kind: 'shrugOff' }       // once per day: ignore one hit
+  | { kind: 'shrugOff'; type?: DamageType } // once per day: ignore one hit. type set = that damage type only
   | { kind: 'underLayer'; ac: number; vs?: Partial<Record<DamageType, number>>; onlyAc?: boolean } // worn under medium/heavy: +ac to that armor (+ extra per type); onlyAc = no other effects underneath; later tiers replace earlier
   | { kind: 'resetAc' }         // flat AC tier: drop all earlier tiers' AC-vs-type bonuses
   | { kind: 'note'; text: string }
   | { kind: 'dropDeflect' }     // removes an earlier tier's d6 deflect
+  | { kind: 'beastReduce'; amount: number | 'prof'; replaces?: boolean }
+  | { kind: 'beastAc'; amount: number; replaces?: boolean }
+  | { kind: 'acFlat'; amount: number } // added to AC against every attack. Not cleared by resetAc.
+  | { kind: 'swear'; types: DamageType[] } // mythic: +3 AC vs the sworn type, −1 vs the others. Needs swornType.
 
 export interface ArmorDef {
   id: string
@@ -108,6 +112,119 @@ export const ARMOR_CATALOG: ArmorDef[] = [
       mythic: [{ kind: 'resetAc' }, { kind: 'acVs', types: ['piercing'], amount: 3 }, { kind: 'acVs', types: ['slashing', 'bludgeoning'], amount: -1 }],
     },
   },
+  {
+    id: 'hide', name: 'Hide', category: 'medium', baseAc: 12, dexCap: 2, stealthDisadvantage: false,
+    focus: 'beasts and cold', allTiers: ['Resists cold weather', 'No stealth disadvantage'],
+    tiers: {
+      green: [{ kind: 'beastReduce', amount: 1 }],
+      blue: [{ kind: 'beastReduce', amount: 'prof', replaces: true }],
+      purple: [{ kind: 'beastAc', amount: 1 }],
+      legendary: [{ kind: 'note', text: 'Advantage on saves against being frightened by beasts.' }],
+      mythic: [{ kind: 'resetAc' }, { kind: 'beastAc', amount: 3, replaces: true }, { kind: 'acVs', types: ['bludgeoning', 'piercing', 'slashing'], amount: -1 }],
+    },
+  },
+  {
+    id: 'chain-shirt', name: 'Chain Shirt', category: 'medium', baseAc: 13, dexCap: 2, stealthDisadvantage: false,
+    focus: 'slashing armor', allTiers: ['Concealable under ordinary clothes', 'No stealth disadvantage'],
+    tiers: {
+      green: [{ kind: 'reduce', type: 'slashing', amount: 1 }],
+      blue: [{ kind: 'reduce', type: 'slashing', amount: 'prof', replaces: true }],
+      purple: [{ kind: 'acVs', types: ['slashing'], amount: 1 }],
+      legendary: [{ kind: 'shrugOff', type: 'slashing' }],
+      mythic: [{ kind: 'resetAc' }, { kind: 'acVs', types: ['slashing'], amount: 3 }, { kind: 'acVs', types: ['piercing', 'bludgeoning'], amount: -1 }],
+    },
+  },
+  {
+    id: 'scale-mail', name: 'Scale Mail', category: 'medium', baseAc: 14, dexCap: 2, stealthDisadvantage: true,
+    focus: 'piercing armor', allTiers: ['Stealth disadvantage'],
+    tiers: {
+      green: [{ kind: 'reduce', type: 'piercing', amount: 1 }],
+      blue: [{ kind: 'acVs', types: ['piercing'], amount: 1 }],
+      purple: [{ kind: 'note', text: 'A piercing attack that misses by 5 or more only scrapes (PLACEHOLDER flavor, no damage).' }],
+      legendary: [{ kind: 'note', text: 'Choose one elemental resistance (fire, cold, lightning, thunder, acid, or poison) while equipped.' }],
+      mythic: [{ kind: 'resetAc' }, { kind: 'acVs', types: ['piercing'], amount: 3 }, { kind: 'acVs', types: ['slashing', 'bludgeoning'], amount: -1 },
+        { kind: 'note', text: 'Keeps the chosen elemental resistance.' }],
+    },
+  },
+  {
+    id: 'breastplate', name: 'Breastplate', category: 'medium', baseAc: 14, dexCap: 2, stealthDisadvantage: false,
+    focus: 'crit defense', allTiers: ['No stealth disadvantage'],
+    tiers: {
+      // PLACEHOLDER climb: green softens the extra dice, blue is a save, purple makes that save easier, then auto.
+      green: [{ kind: 'note', text: 'PLACEHOLDER: a critical hit’s extra dice are reduced by one die.' }],
+      blue: [{ kind: 'note', text: 'Constitution save (DC 10 + half the damage) to turn a critical hit into a normal hit.' }],
+      purple: [{ kind: 'note', text: 'PLACEHOLDER: advantage on that Constitution save to turn a crit into a normal hit.' }],
+      legendary: [{ kind: 'note', text: '1/day, a critical hit against you becomes a normal hit with no save.' }],
+      mythic: [{ kind: 'note', text: 'The first critical hit against you each day becomes a normal hit.' }],
+    },
+  },
+  {
+    id: 'half-plate', name: 'Half Plate', category: 'medium', baseAc: 15, dexCap: 2, stealthDisadvantage: true,
+    focus: 'all-rounder', allTiers: ['Stealth disadvantage'],
+    tiers: {
+      green: [
+        { kind: 'reduce', type: 'bludgeoning', amount: 1 },
+        { kind: 'reduce', type: 'piercing', amount: 1 },
+        { kind: 'reduce', type: 'slashing', amount: 1 },
+      ],
+      blue: [{ kind: 'note', text: 'On a short rest, pick one physical type: +1 AC against it until the next short rest. The −1 damage to all three stays.' }],
+      purple: [{ kind: 'acVs', types: ['bludgeoning', 'piercing', 'slashing'], amount: 1 }],
+      legendary: [{ kind: 'note', text: 'Damaged (−1 AC) only at or below ¼ max durability, instead of half.' }],
+      mythic: [{ kind: 'resetAc' }, { kind: 'swear', types: ['bludgeoning', 'piercing', 'slashing'] },
+        { kind: 'note', text: 'PLACEHOLDER: the −1 damage to all three physical types stays under the sworn AC split.' }],
+    },
+  },
+  {
+    id: 'ring-mail', name: 'Ring Mail', category: 'heavy', baseAc: 14, dexCap: 0, stealthDisadvantage: true,
+    focus: 'bludgeoning armor', allTiers: ['No Dexterity to AC', 'Stealth disadvantage', 'Padded’s heavy cousin'],
+    tiers: {
+      green: [{ kind: 'reduce', type: 'bludgeoning', amount: 1 }],
+      blue: [{ kind: 'reduce', type: 'bludgeoning', amount: 'prof', replaces: true }],
+      purple: [{ kind: 'acVs', types: ['bludgeoning'], amount: 1 }],
+      // PLACEHOLDER: padded’s legendary under-layer bonus, worn as the suit itself.
+      legendary: [{ kind: 'acFlat', amount: 1 }],
+      mythic: [{ kind: 'resetAc' }, { kind: 'acVs', types: ['bludgeoning'], amount: 3 }, { kind: 'acVs', types: ['slashing', 'piercing'], amount: -1 }],
+    },
+  },
+  {
+    id: 'chain-mail', name: 'Chain Mail', category: 'heavy', baseAc: 16, dexCap: 0, stealthDisadvantage: true,
+    focus: 'slashing armor', allTiers: ['No Dexterity to AC', 'Stealth disadvantage', 'Strength 13 to wear it well'],
+    tiers: {
+      green: [{ kind: 'reduce', type: 'slashing', amount: 1 }],
+      blue: [{ kind: 'reduce', type: 'slashing', amount: 'prof', replaces: true }],
+      purple: [{ kind: 'acVs', types: ['slashing'], amount: 1 }],
+      legendary: [{ kind: 'shrugOff' }],
+      mythic: [{ kind: 'resetAc' }, { kind: 'acVs', types: ['slashing'], amount: 3 }, { kind: 'acVs', types: ['piercing', 'bludgeoning'], amount: -1 }],
+    },
+  },
+  {
+    id: 'splint', name: 'Splint', category: 'heavy', baseAc: 17, dexCap: 0, stealthDisadvantage: true,
+    focus: 'immovable', allTiers: ['No Dexterity to AC', 'Stealth disadvantage', 'Strength 15 to wear it well'],
+    tiers: {
+      green: [{ kind: 'note', text: '1/fight: advantage on saves against being shoved or knocked prone.' }],
+      blue: [{ kind: 'note', text: 'PLACEHOLDER: advantage against shove and prone, and the first forced movement each fight is halved.' }],
+      purple: [{ kind: 'note', text: 'PLACEHOLDER: 1/fight you cannot be moved against your will.' }],
+      legendary: [{ kind: 'note', text: '1/day: you cannot be moved against your will.' }],
+      mythic: [{ kind: 'resetAc' }, { kind: 'acVs', types: ['bludgeoning'], amount: 3 }, { kind: 'acVs', types: ['slashing', 'piercing'], amount: -1 },
+        { kind: 'note', text: 'Immune to forced movement 1/long rest.' }],
+    },
+  },
+  {
+    id: 'plate', name: 'Plate', category: 'heavy', baseAc: 18, dexCap: 0, stealthDisadvantage: true,
+    focus: 'all-rounder', allTiers: ['No Dexterity to AC', 'Stealth disadvantage', 'Strength 15 to wear it well'],
+    tiers: {
+      green: [
+        { kind: 'reduce', type: 'bludgeoning', amount: 1 },
+        { kind: 'reduce', type: 'piercing', amount: 1 },
+        { kind: 'reduce', type: 'slashing', amount: 1 },
+      ],
+      blue: [{ kind: 'acFlat', amount: 1 }],
+      purple: [{ kind: 'note', text: 'PLACEHOLDER: a critical hit’s extra dice are reduced by one die.' }],
+      legendary: [{ kind: 'note', text: '1/day, a critical hit against you becomes a normal hit.' }],
+      mythic: [{ kind: 'resetAc' }, { kind: 'swear', types: ['bludgeoning', 'piercing', 'slashing'] },
+        { kind: 'note', text: 'Keeps the 1/day crit negation. Swear the type at the forge.' }],
+    },
+  },
 ]
 
 export const armorById = (id?: string | null) => ARMOR_CATALOG.find((a) => a.id === id)
@@ -119,15 +236,20 @@ export interface ResolvedArmor {
   acVs: Partial<Record<DamageType, number>>
   deflectD6: boolean
   shrugOff: boolean
+  /** Set when Shrug Off only answers one damage type (chain shirt). */
+  shrugType?: DamageType
   underLayerAc: number
   underVs: Partial<Record<DamageType, number>>
   underOnlyAc: boolean
+  acFlat: number
+  beastReduce: number
+  beastAc: number
   lines: string[] // human-readable list of active effects
   notes: string[]
 }
 
-export function resolveArmor(def: ArmorDef | undefined, tier: Tier | undefined, prof: number, asUnder = false): ResolvedArmor {
-  const r: ResolvedArmor = { reduce: {}, acVs: {}, deflectD6: false, shrugOff: false, underLayerAc: 0, underVs: {}, underOnlyAc: false, lines: [], notes: [] }
+export function resolveArmor(def: ArmorDef | undefined, tier: Tier | undefined, prof: number, asUnder = false, sworn?: DamageType): ResolvedArmor {
+  const r: ResolvedArmor = { reduce: {}, acVs: {}, deflectD6: false, shrugOff: false, underLayerAc: 0, underVs: {}, underOnlyAc: false, acFlat: 0, beastReduce: 0, beastAc: 0, lines: [], notes: [] }
   if (!def || !tier) return r
   r.notes = [...def.allTiers]
   for (const t of TIERS.slice(0, TIERS.indexOf(tier) + 1)) {
@@ -138,16 +260,27 @@ export function resolveArmor(def: ArmorDef | undefined, tier: Tier | undefined, 
       } else if (e.kind === 'acVs') { if (!(asUnder && e.notUnder)) for (const ty of e.types) r.acVs[ty] = (r.acVs[ty] ?? 0) + e.amount }
       else if (e.kind === 'deflectD6') r.deflectD6 = true
       else if (e.kind === 'dropDeflect') r.deflectD6 = false
-      else if (e.kind === 'shrugOff') r.shrugOff = true
+      else if (e.kind === 'shrugOff') { if (e.type) { r.shrugOff = false; r.shrugType = e.type } else { r.shrugOff = true; r.shrugType = undefined } }
       else if (e.kind === 'underLayer') { r.underLayerAc = e.ac; r.underVs = e.vs ?? {}; r.underOnlyAc = !!e.onlyAc }
       else if (e.kind === 'resetAc') r.acVs = {}
+      else if (e.kind === 'beastReduce') { const n = e.amount === 'prof' ? prof : e.amount; r.beastReduce = e.replaces ? n : r.beastReduce + n }
+      else if (e.kind === 'beastAc') r.beastAc = e.replaces ? e.amount : r.beastAc + e.amount
+      else if (e.kind === 'acFlat') r.acFlat += e.amount
+      else if (e.kind === 'swear') {
+        if (sworn && e.types.includes(sworn)) { r.acVs = {}; for (const ty of e.types) r.acVs[ty] = ty === sworn ? 3 : -1 }
+        else r.notes.push(`Swear one type at the forge (${e.types.join(', ')}): +3 AC vs that type, −1 vs the other two.`)
+      }
       else r.notes.push(e.text)
     }
   }
   for (const [ty, n] of Object.entries(r.reduce)) r.lines.push(`−${n} ${ty} damage taken`)
+  if (r.beastReduce) r.lines.push(`−${r.beastReduce} damage from beast attacks`)
   for (const [ty, n] of Object.entries(r.acVs)) if (n) r.lines.push(`${n > 0 ? '+' : '−'}${Math.abs(n)} AC vs ${ty}`)
+  if (r.beastAc) r.lines.push(`+${r.beastAc} AC vs beast attacks`)
+  if (r.acFlat) r.lines.push(`+${r.acFlat} AC`)
   if (r.deflectD6) r.lines.push('d6 deflect on piercing hits (6 = no damage)')
   if (r.shrugOff) r.lines.push('Shrug Off: ignore one hit per day (resets on long rest)')
+  if (r.shrugType) r.lines.push(`Shrug Off: ignore one ${r.shrugType} hit per day (resets on long rest)`)
   if (r.underLayerAc) r.lines.push(`Can be worn under medium/heavy armor (+${r.underLayerAc} AC${Object.entries(r.underVs).map(([t, n]) => `, +${r.underLayerAc + n!} vs ${t}`).join('')}${r.underOnlyAc ? '; AC only' : ''})`)
   return r
 }
@@ -165,14 +298,16 @@ export interface ArmorFields {
   prof?: number
   /** tier data version (see TIER_VERSION) */
   tierV?: number
-  /** equipped armor is Damaged (durability ≤ half): −1 AC */
+  /** equipped armor is Damaged (durability ≤ half, or ¼ for legendary half plate): −1 AC */
   armorDamaged?: boolean
+  /** Mythic plate / half plate: physical type sworn at the forge. */
+  swornType?: DamageType
 }
 
 /** Combined effects of main armor + optional under-layer. */
 export function combinedArmor(f: ArmorFields): ResolvedArmor {
   const prof = f.prof ?? 2
-  const main = resolveArmor(armorById(f.armorId), f.armorTier, prof)
+  const main = resolveArmor(armorById(f.armorId), f.armorTier, prof, false, f.swornType)
   const mainDef = armorById(f.armorId)
   if (!mainDef || mainDef.category === 'light' || !canBeUnderLayer(f.underId, f.underTier)) return main
   const under = resolveArmor(armorById(f.underId), f.underTier, prof, true)
@@ -191,7 +326,7 @@ export function armorAc(f: ArmorFields, dexMod: number): number | null {
   const def = armorById(f.armorId)
   if (!def) return null
   const dex = def.dexCap === null ? dexMod : Math.min(dexMod, def.dexCap)
-  let ac = def.baseAc + dex
+  let ac = def.baseAc + dex + resolveArmor(def, f.armorTier, f.prof ?? 2, false, f.swornType).acFlat
   if (f.armorDamaged) ac -= 1
   if (def.category !== 'light' && canBeUnderLayer(f.underId, f.underTier)) ac += resolveArmor(armorById(f.underId), f.underTier, 2).underLayerAc
   return ac

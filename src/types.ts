@@ -37,7 +37,9 @@ export interface Abilities { str: number; dex: number; con: number; int: number;
 
 export interface Purse { gold: number; silver: number }
 
-export type ItemKind = 'armor' | 'weapon' | 'consumable' | 'scroll' | 'misc'
+export type ItemKind = 'armor' | 'weapon' | 'consumable' | 'scroll' | 'misc' | 'shield'
+/** Heavy shields switch among these. Small and medium shields stay wielded. */
+export type ShieldMode = 'wielded' | 'back' | 'planted'
 export type EquipSlot = 'head' | 'hands' | 'feet'
 export type WeaponStyle = 'melee' | 'ranged'
 /** Pink and black sit beside the Common→Mythic ladder. They are not fuse steps. */
@@ -103,6 +105,11 @@ export interface Item {
   abilityNote?: string
   /** player marked this armor to be broken down at the blacksmith */
   salvaged?: boolean
+  /** shield catalog id (src/shields.ts) */
+  shieldId?: string
+  shieldMode?: ShieldMode
+  /** Mythic plate / half plate: the physical type sworn at the forge. */
+  swornType?: DamageType
 }
 
 export interface Chest { id: string; name: string; items: Item[]; gold: number; silver: number; pouches?: { id: string; gold: number; silver: number }[]; updated?: number
@@ -169,6 +176,10 @@ export interface Character extends ArmorFields {
   favor?: Record<string, number>
   /** Offers this character has made. The item stays here until the other person accepts. */
   trades?: ItemTrade[]
+  /** Inspiration pips, 0–2. */
+  inspiration?: number
+  /** Timestamp of the last pip the DM gave. The player view plays the orb off this. */
+  inspirationPing?: number
 }
 
 export interface ItemTrade {
@@ -212,6 +223,12 @@ export interface Combatant extends ArmorFields {
   shrugUsed?: boolean
   /** temporary effects for this battle (e.g. resistance from a spell) */
   tempTraits?: Trait[]
+  /** rarity tier used when this monster drops loot. Unset → guessed from the name. */
+  lootTier?: import('./armor').Tier
+  /** catalog weapon they are holding. Unset → guessed from attacks. */
+  lootWeaponId?: string
+  /** catalog armor they are wearing. Unset → guessed from the armor line. */
+  lootArmorId?: string
 }
 
 export interface LogEntry {

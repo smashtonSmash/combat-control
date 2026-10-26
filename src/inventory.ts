@@ -8,10 +8,12 @@ import { abilityMod, rollExpression } from './dice'
 import { charProf } from './seed'
 import { accessoryAc, rangedToHitBonus } from './accessories'
 import { weaponStyle } from './weapons'
+import { shieldAcBonus, shieldById } from './shields'
 import { wieldBlock } from './specialGear'
+import type { ShieldMode } from './types'
 import { damageFor, scrollStats, type CharSpell } from './spells'
 
-export const KIND_ICON: Record<Item['kind'], string> = { armor: '🛡', weapon: '⚔️', consumable: '🧪', scroll: '📜', misc: '📦' }
+export const KIND_ICON: Record<Item['kind'], string> = { armor: '🛡', weapon: '⚔️', shield: '🛡️', consumable: '🧪', scroll: '📜', misc: '📦' }
 
 /** A spell scroll anyone can use (house rule: no class/ability check). */
 export function scrollItem(spell: CharSpell): Item {
@@ -58,8 +60,10 @@ export function recalcArmor(c0: Character): Character {
   const c = { ...c0, armorDamaged: armorDamagedFlag(c0) || undefined }
   const dex = abilityMod(c.abilities.dex)
   const arm = armorAc(c, dex)
-  const bonus = accessoryAc(c)
+  const bonus = accessoryAc(c) + shieldAcBonus(c)
   if (c.acManual) return { ...c, tierV: 2, ...(c.armorId ? { armor: armorLabel(c) } : {}) }
+  const shield = shieldAcBonus(c)
+  if (arm === null && !shield) return { ...c, tierV: 2, ...(c.armorId ? { armor: armorLabel(c) } : {}) }
   const ac = (arm ?? 10 + dex) + bonus
   return { ...c, tierV: 2, ac, ...(c.armorId ? { armor: armorLabel(c) } : {}) }
 }
@@ -71,6 +75,29 @@ function refreshRanged(c: Character): Character {
 }
 
 const weaponAttackId = (it: Item) => 'item-' + it.id
+const shieldAttackId = (it: Item) => 'shield-' + it.id
+
+/** Heavy shield mode, or the mode a small/medium shield is sitting in. Wielded is the default. */
+export function setShieldMode(c: Character, itemId: string, mode: ShieldMode): Character {
+  const it = (c.inventory ?? []).find((i) => i.id === itemId)
+  if (!it || it.kind !== 'shield') return c
+  let n: Character = {
+    ...c,
+    inventory: (c.inventory ?? []).map((i) => (i.kind === 'shield' ? { ...i, equipped: i.id === itemId, ...(i.id === itemId ? { shieldMode: mode } : {}) } : i)),
+    attacks: c.attacks.filter((a) => a.id !== shieldAttackId(it)),
+  }
+  const def = shieldById(it.shieldId)
+  if (def?.occupiesHand && mode === 'wielded') {
+    for (const w of (n.inventory ?? []).filter((i) => i.kind === 'weapon' && i.equipped)) {
+      n = { ...n, attacks: n.attacks.filter((a) => a.id !== weaponAttackId(w)), inventory: (n.inventory ?? []).map((i) => (i.id === w.id ? { ...i, equipped: false } : i)) }
+    }
+  }
+  if (def?.bash && it.tier && mode === 'wielded') {
+    const str = abilityMod(n.abilities.str)
+    n = { ...n, attacks: [...n.attacks, { id: shieldAttackId(it), name: `${it.name} Bash`, toHit: charProf(n) + str, damage: `${def.bash[it.tier]}${str ? (str > 0 ? '+' : '') + str : ''}`, damageType: 'bludgeoning' }] }
+  }
+  return recalcArmor(n)
+}
 
 export function equip(c: Character, itemId: string): Character {
   const inv = c.inventory ?? []
@@ -79,8 +106,12 @@ export function equip(c: Character, itemId: string): Character {
   if (it.kind === 'armor') {
     if (it.atForge || isBroken(it) || it.salvaged) return c // at the blacksmith / Broken / waiting to be salvaged
     // one armor at a time
-    const next = { ...c, armorId: it.armorId, armorTier: it.tier, inventory: inv.map((x) => (x.kind === 'armor' ? { ...x, equipped: x.id === itemId } : x)) }
+    const next = { ...c, armorId: it.armorId, armorTier: it.tier, swornType: it.swornType, inventory: inv.map((x) => (x.kind === 'armor' ? { ...x, equipped: x.id === itemId } : x)) }
     return recalcArmor(next)
+  }
+  if (it.kind === 'shield') {
+    if (it.atForge || isBroken(it)) return c
+    return setShieldMode(c, itemId, it.shieldMode ?? 'wielded')
   }
   if (it.equipSlot) {
     const next = recalcArmor({ ...c, inventory: inv.map((x) => (x.equipSlot === it.equipSlot ? { ...x, equipped: x.id === itemId } : x)) })
@@ -91,7 +122,12 @@ export function equip(c: Character, itemId: string): Character {
     const style = weaponStyle(it)
     let attacks = c.attacks
     let nextInv = inv
-    for (const other of inv.filter((x) => x.kind === 'weapon' && x.equipped && x.id !== it.id && weaponStyle(x) === style)) {
+    const heavy = inv.find((x) => x.kind === 'shield' && x.equipped && shieldById(x.shieldId)?.occupiesHand && (x.shieldMode ?? 'wielded') === 'wielded')
+    if (heavy) {
+      attacks = attacks.filter((a) => a.id !== shieldAttackId(heavy))
+      nextInv = nextInv.map((x) => (x.id === heavy.id ? { ...x, equipped: false } : x))
+    }
+    for (const other of nextInv.filter((x) => x.kind === 'weapon' && x.equipped && x.id !== it.id && weaponStyle(x) === style)) {
       attacks = attacks.filter((a) => a.id !== weaponAttackId(other))
       nextInv = nextInv.map((x) => (x.id === other.id ? { ...x, equipped: false } : x))
     }
@@ -100,7 +136,7 @@ export function equip(c: Character, itemId: string): Character {
     const mod = ability + (style === 'ranged' ? rangedToHitBonus({ ...c, inventory: nextInv }) : 0)
     const atk = { id: weaponAttackId(it), name: it.name + (it.coating ? ` (${it.coating.source})` : ''), toHit: charProf(c) + mod, damage: `${it.damage ?? '1d4'}${ability ? (ability > 0 ? '+' : '') + ability : ''}`,
       damageType: it.coating?.type ?? it.damageType ?? 'bludgeoning' as DamageType, ...(it.coating?.bonus ? { bonus: it.coating.bonus } : {}) }
-    return { ...c, attacks: [...attacks.filter((a) => a.id !== atk.id), atk], inventory: nextInv }
+    return recalcArmor({ ...c, attacks: [...attacks.filter((a) => a.id !== atk.id), atk], inventory: nextInv })
   }
   return c
 }
@@ -111,10 +147,14 @@ export function unequip(c: Character, itemId: string): Character {
   if (!it) return c
   const base = { ...c, inventory: inv.map((x) => (x.id === itemId ? { ...x, equipped: false } : x)) }
   if (it.kind === 'armor') {
-    const cleared = { ...base, armorId: undefined, armorTier: undefined, armorDamaged: undefined, armor: 'No armor' }
+    const cleared = { ...base, armorId: undefined, armorTier: undefined, swornType: undefined, armorDamaged: undefined, armor: 'No armor' }
     return c.acManual ? cleared : recalcArmor(cleared)
   }
-  if (it.kind === 'weapon') return { ...base, attacks: c.attacks.filter((a) => a.id !== weaponAttackId(it)) }
+  if (it.kind === 'shield') {
+    const cleared = { ...base, attacks: c.attacks.filter((a) => a.id !== shieldAttackId(it)) }
+    return c.acManual ? cleared : recalcArmor(cleared)
+  }
+  if (it.kind === 'weapon') return recalcArmor({ ...base, attacks: c.attacks.filter((a) => a.id !== weaponAttackId(it)) })
   if (it.equipSlot) return refreshRanged(recalcArmor(base))
   return base
 }

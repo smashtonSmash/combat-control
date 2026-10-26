@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { splitEvenly, takeFrom } from './loot'
-import { LOOT_TABLES, rollLoot } from './lootTables'
+import { MONSTER_PIES, inferLoadout, rollMonsterLoot, suggestMonsterTier } from './lootTables'
 
 describe('loot coins', () => {
   it('takes pouches out of the pile', () => {
@@ -17,39 +17,30 @@ describe('loot coins', () => {
   })
 })
 
-describe('monster loot rolls', () => {
-  const goblin = LOOT_TABLES.find((t) => t.id === 'goblin')!
+describe('monster loot pies', () => {
+  const load = { lightSplit: true }
   const scripted = (values: number[]) => { let i = 0; return () => values[i++] ?? 0.99 }
-  it('a high roll misses and a zero roll hits both chances', () => {
-    expect(rollLoot(goblin, () => 0.99)).toEqual([])
-    const hit = rollLoot(goblin, () => 0)
-    expect(hit).toHaveLength(2)
-    expect(hit.some((i) => i.materialKey)).toBe(true)
+  it('a miss is empty and a hit on the first slice is a gray mat', () => {
+    expect(MONSTER_PIES.green.drop).toBe(0.2)
+    expect(rollMonsterLoot('green', load, () => 0.99)).toEqual([])
+    const hit = rollMonsterLoot('green', load, scripted([0, 0]))
+    expect(hit).toHaveLength(1)
+    expect(hit[0].materialKey).toBe('mat_gray')
   })
-  it('part and gear chances land near 20%', () => {
-    const seq: number[] = []
-    let partHits = 0
-    let gearHits = 0
-    for (let i = 0; i < 100; i++) {
-      const p = i / 100
-      const g = ((i * 7) % 100) / 100
-      seq.push(p)
-      if (p < goblin.partChance) { partHits++; seq.push(0) }
-      seq.push(g)
-      if (g < goblin.gearChance) { gearHits++; seq.push(0) }
-    }
-    const rng = scripted(seq)
-    let gotP = 0
-    let gotG = 0
-    for (let i = 0; i < 100; i++) {
-      const items = rollLoot(goblin, rng)
-      if (items.some((x) => x.materialKey)) gotP++
-      if (items.some((x) => !x.materialKey)) gotG++
-    }
-    expect(goblin.partChance).toBe(0.2)
-    expect(goblin.gearChance).toBe(0.2)
-    expect(gotP).toBe(partHits)
-    expect(gotG).toBe(gearHits)
-    expect(partHits).toBe(20)
+  it('mythic always drops legendary gear and sometimes a second mythic piece', () => {
+    const one = rollMonsterLoot('mythic', { weaponId: 'longsword', lightSplit: true }, scripted([0, 0.9]))
+    expect(one).toHaveLength(1)
+    expect(one[0].tier).toBe('legendary')
+    expect(one[0].weaponId).toBe('longsword')
+    const two = rollMonsterLoot('mythic', { weaponId: 'dagger', lightSplit: false, armorId: 'plate' }, scripted([0, 0, 0]))
+    expect(two.map((i) => i.tier)).toEqual(['legendary', 'mythic'])
+  })
+  it('names a goblin as green and an ogre as purple', () => {
+    expect(suggestMonsterTier('Goblin')).toBe('green')
+    expect(suggestMonsterTier('Ogre')).toBe('purple')
+    const loadout = inferLoadout({ armor: 'Chain mail', attacks: [{ name: 'Greataxe' }] })
+    expect(loadout.weaponId).toBe('greataxe')
+    expect(loadout.armorId).toBe('chain-mail')
+    expect(loadout.lightSplit).toBe(false)
   })
 })
