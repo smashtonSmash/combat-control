@@ -148,11 +148,16 @@ export function unequip(c: Character, itemId: string): Character {
   const base = { ...c, inventory: inv.map((x) => (x.id === itemId ? { ...x, equipped: false } : x)) }
   if (it.kind === 'armor') {
     const cleared = { ...base, armorId: undefined, armorTier: undefined, swornType: undefined, armorDamaged: undefined, armor: 'No armor' }
-    return c.acManual ? cleared : recalcArmor(cleared)
+    if (c.acManual) return cleared
+    const dex = abilityMod(cleared.abilities.dex)
+    return { ...cleared, tierV: 2, ac: 10 + dex + accessoryAc(cleared) + shieldAcBonus(cleared) }
   }
   if (it.kind === 'shield') {
-    const cleared = { ...base, attacks: c.attacks.filter((a) => a.id !== shieldAttackId(it)) }
-    return c.acManual ? cleared : recalcArmor(cleared)
+    const cleared = { ...base, attacks: base.attacks.filter((a) => a.id !== shieldAttackId(it)) }
+    if (c.acManual) return cleared
+    const dex = abilityMod(cleared.abilities.dex)
+    if (armorAc(cleared, dex) === null) return { ...cleared, tierV: 2, ac: 10 + dex + accessoryAc(cleared) + shieldAcBonus(cleared) }
+    return recalcArmor(cleared)
   }
   if (it.kind === 'weapon') return recalcArmor({ ...base, attacks: c.attacks.filter((a) => a.id !== weaponAttackId(it)) })
   if (it.equipSlot) return refreshRanged(recalcArmor(base))
