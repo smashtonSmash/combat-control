@@ -374,7 +374,8 @@ h2 .player-tag, .cv-titlebar .player-tag { font-family: var(--sans); letter-spac
 .item-card.selected { outline: 2px solid var(--gold2, #f0d58a); }
 .item-card.equipped { background: linear-gradient(180deg, #2b2414, #15110c); }
 .item-card.lifted { opacity: .4; }
-.item-icon { font-size: 26px; }
+.item-icon { font-size: 26px; line-height: 1; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.item-icon img { width: 30px; height: 30px; object-fit: contain; display: block; pointer-events: none; }
 .item-name { font-size: 12px; font-weight: 700; line-height: 1.15; }
 .item-sub { font-size: 10px; opacity: .75; }
 .qty { position: absolute; top: 4px; right: 6px; font-size: 11px; font-weight: 800; color: var(--gold2, #f0d58a); }
