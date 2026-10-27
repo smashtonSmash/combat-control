@@ -31,8 +31,13 @@ export const MERCHANTS: Merchant[] = [
   { id: 'odo', name: 'Odo the Open', style: 'friendly', personality: 'Would rather you come back tomorrow than win today.', baseAdjust: 0 },
 ]
 
-export const merchantById = (id?: string, extra: Merchant[] = []) => [...MERCHANTS, ...extra].find((m) => m.id === id)
-export const allMerchants = (extra?: Merchant[]) => [...MERCHANTS, ...(extra ?? [])]
+export const merchantById = (id?: string, extra: Merchant[] = [], removed: string[] = []) =>
+  allMerchants(extra, removed).find((m) => m.id === id)
+/** Built-in examples plus table-added merchants, minus anyone the DM has removed. */
+export const allMerchants = (extra?: Merchant[], removed: string[] = []) => {
+  const hide = new Set(removed)
+  return [...MERCHANTS, ...(extra ?? [])].filter((m) => !hide.has(m.id))
+}
 
 const TRADE_PRESET: Record<string, Pick<Merchant, 'style' | 'baseAdjust' | 'personality'>> = {
   Blacksmith: { style: 'greedy', baseAdjust: 10, personality: 'Hammers out a price and remembers a haggle.' },

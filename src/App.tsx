@@ -27,6 +27,7 @@ import { emptyNote, type SharedNote } from './notes'
 import { acceptTrade, declineTrade } from './trade'
 import { CloudSheet } from './components/Cloud'
 import { PlayerNames } from './components/PlayerName'
+import { InspirationShow } from './components/InspirationShow'
 import { playerDirectory } from './playerLabel'
 import { uid } from './types'
 import { migrateTiers } from './armor'
@@ -469,12 +470,13 @@ export default function App() {
         )}
         {tab === 'dice' && <Dice history={history} setHistory={setHistory} />}
         {tab === 'campaign' && <Campaign pages={pages} setPages={setPages} note={sharedNote} onSaveNote={saveNote} author={author} />}
-        {tab === 'loot' && <Loot chests={chests} saveChest={saveChest} deleteChest={deleteChest} characters={allChars} onGiveItem={giveItemTo} onGiveCoins={giveCoinsTo} readOnly={online && !isDM} online={online} onOpenReveal={() => setDismissedReveal(null)} onSaveChar={saveCharacter} pendingLoot={pendingLoot} onPendingLoot={setPendingLoot} onRecap={note} merchants={town.merchants} />}
+        {tab === 'loot' && <Loot chests={chests} saveChest={saveChest} deleteChest={deleteChest} characters={allChars} onGiveItem={giveItemTo} onGiveCoins={giveCoinsTo} readOnly={online && !isDM} online={online} onOpenReveal={() => setDismissedReveal(null)} pendingLoot={pendingLoot} onPendingLoot={setPendingLoot} />}
         {tab === 'casino' && <Casino characters={casinoChars} adjust={adjustCoins} table={casinoTable} isDealer={!online || isDM} localIds={casinoChars.map((c) => c.id)} onCommit={commitTable} onAct={sendCasino} />}
         {tab === 'town' && <Town characters={allChars} town={town} onTown={saveTown} onSave={saveCharacter} isDM={!online || isDM} onRecap={note} />}
         {tab === 'rules' && <Rules recap={recap} onClearRecap={() => { setRecap([]); pushHomebrew({ recap: [] }) }} />}
       </main>
       {showReveal && revealed && <RevealOverlay chest={revealed} myChars={characters} onTake={(what, ref, charId, g, s) => cloud.takeLoot(revealed.id, charId, what, ref, g, s)} onClose={() => setDismissedReveal(revealed.revealedAt ?? null)} />}
+      <InspirationShow characters={allChars} />
       </PlayerNames>
       {cloudOpen && (
         <CloudSheet session={session} campaigns={campaigns} activeId={active?.id ?? null} members={cloud.members}

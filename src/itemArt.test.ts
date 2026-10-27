@@ -42,7 +42,7 @@ describe('item art', () => {
     expect(itemArtSrc(whisperfang())).toBeNull()
     expect(itemArtSrc(pinkLantern())).toBeNull()
     expect(itemArtSrc(accessoryItem('iron-cap'))).toBeNull()
-    expect(itemArtSrc(materialItem('wolf_pelt', 2))).toBeNull()
+    expect(itemArtSrc(materialItem('green', 2))).toBeNull()
     expect(itemArtSrc({ name: 'Stick', kind: 'weapon' })).toBeNull()
     expect(itemArtSrc({ name: 'Plate', kind: 'armor', armorId: 'plate', tier: 'green' })).toBeNull()
     expect(itemArtSrc({ name: 'Dagger', kind: 'weapon', weaponId: 'goblin-shiv' })).toBeNull()

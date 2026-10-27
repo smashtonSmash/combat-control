@@ -9,8 +9,8 @@ import { TIERS, TIER_SHORT, armorById, renameTierText, type ArmorCategory, type 
 // ---------- A) Armor prices ----------
 /** Light armor price by tier (gold). */
 export const ARMOR_PRICES: Record<Tier, number> = { green: 10, blue: 35, purple: 90, legendary: 300, mythic: 1000 }
-/** Medium / heavy armor = light price × multiplier. TBD — set these when decided. */
-export const ARMOR_PRICE_MULTIPLIER: Record<ArmorCategory, number> = { light: 1, medium: 1, heavy: 1 }
+/** Medium ×2, heavy ×5 of the light price. */
+export const ARMOR_PRICE_MULTIPLIER: Record<ArmorCategory, number> = { light: 1, medium: 2, heavy: 5 }
 export function armorPrice(armorId: string | undefined, tier: Tier): number {
   const def = armorById(armorId)
   const mult = def?.priceMultiplier ?? ARMOR_PRICE_MULTIPLIER[def?.category ?? 'light']
@@ -18,26 +18,70 @@ export function armorPrice(armorId: string | undefined, tier: Tier): number {
 }
 
 // ---------- Armor durability ----------
-/** Max durability by tier id. */
-export const ARMOR_DURABILITY: Record<Tier, number> = { green: 10, blue: 15, purple: 20, legendary: 30, mythic: 40 }
-/** PLACEHOLDER: weapon durability matches armor until Ashton sets separate numbers. Misses spend this much (hits spend none). */
-export const WEAPON_DURABILITY: Record<Tier, number> = { green: 10, blue: 15, purple: 20, legendary: 30, mythic: 40 }
+/**
+ * Max durability by category × tier (green → mythic).
+ * PLACEHOLDER lowball — Ashton may buff these.
+ * Shields use the row for their size (small = light, medium = medium, heavy = heavy).
+ */
+export const ARMOR_HP: Record<ArmorCategory, Record<Tier, number>> = {
+  light: { green: 15, blue: 20, purple: 26, legendary: 36, mythic: 48 },
+  medium: { green: 22, blue: 30, purple: 40, legendary: 54, mythic: 72 },
+  heavy: { green: 30, blue: 40, purple: 52, legendary: 72, mythic: 96 },
+}
+/** Light row, for older call sites that only print one number per tier. */
+export const ARMOR_DURABILITY = ARMOR_HP.light
+
+export type WeaponSize = 'light' | 'standard' | 'heavy'
+/**
+ * Weapon durability by size × tier. PLACEHOLDER lowball.
+ * Light: dagger, handaxe, shortsword. Standard: longsword, rapier, mace, warhammer, shortbow.
+ * Heavy (two-hand): greatsword, greataxe, longbow.
+ */
+export const WEAPON_HP: Record<WeaponSize, Record<Tier, number>> = {
+  light: { green: 8, blue: 12, purple: 16, legendary: 22, mythic: 30 },
+  standard: { green: 12, blue: 16, purple: 22, legendary: 30, mythic: 40 },
+  heavy: { green: 16, blue: 22, purple: 30, legendary: 42, mythic: 56 },
+}
+export const WEAPON_SIZE_BY_ID: Record<string, WeaponSize> = {
+  dagger: 'light', handaxe: 'light', shortsword: 'light',
+  longsword: 'standard', rapier: 'standard', mace: 'standard', warhammer: 'standard', shortbow: 'standard',
+  greatsword: 'heavy', greataxe: 'heavy', longbow: 'heavy',
+}
+/** Standard-size row. Named black mythics with no size use the mythic cell of this row. */
+export const WEAPON_DURABILITY = WEAPON_HP.standard
 export const WEAPON_MISS_WEAR = 1
-/** Wear when the wearer is hit (the higher applies). */
+/** Wear when the wearer is hit (the higher applies). Unchanged. */
 export const WEAR = { hit: 1, weakType: 2, crit: 3, weakCrit: 3 }
-/** Damaged at or below this fraction of max → −1 AC. Broken at 0. */
+/** Combat Damaged (−1 AC) at or below this fraction of max. Broken at 0. */
 export const DAMAGED_AT = 0.5
+/** Salvage pays the rich bundle only when current durability is strictly above this. */
+export const SALVAGE_RICH_ABOVE = 0.65
 export const DAMAGED_AC_PENALTY = 1
-/** Blacksmith repair cost (gold per point) by tier id; Broken armor costs × BROKEN_REPAIR_MULT. */
+/** Blacksmith repair cost (gold per missing point) by tier; Broken costs × BROKEN_REPAIR_MULT. */
 export const REPAIR_COST_PER_POINT: Record<Tier, number> = { green: 1, blue: 1, purple: 3, legendary: 10, mythic: 25 }
 export const BROKEN_REPAIR_MULT = 2
-/** Field Repair Kit restores this much (use during a short rest). */
+/** Field Repair Kit restores this much (use during a short rest). Not a tiered kit. */
 export const FIELD_REPAIR_DICE = '1d6+2'
 
-// ---------- B) Blacksmith fusing ----------
-/** Fee (gold) to fuse two armors of the same type + tier into one of the next tier. Key = the tier you start from. */
-export const FUSE_FEES: Partial<Record<Tier, number>> = { green: 15, blue: 20, purple: 120, legendary: 400 }
-export const FUSE_NOTE = 'Fusing takes a few days at the forge.'
+// ---------- B) Blacksmith upgrade (3 → 1) ----------
+/** Light baseline fee (gold) to upgrade three of a tier into one of the next. Key = the tier you start from. */
+export const UPGRADE_FEES: Partial<Record<Tier, number>> = { green: 5, blue: 15, purple: 50, legendary: 150 }
+/** Medium ×2, heavy ×5. Weapons use the light baseline — PLACEHOLDER until Ashton sets a size multiplier. */
+export const UPGRADE_MULT: Record<ArmorCategory, number> = { light: 1, medium: 2, heavy: 5 }
+export function upgradeFeeGold(from: Tier, category: ArmorCategory | 'weapon'): number | null {
+  const base = UPGRADE_FEES[from]
+  if (base == null) return null
+  return category === 'weapon' ? base : base * UPGRADE_MULT[category]
+}
+/** Gold to craft one item from four mats of that tier. Gray is merge-only and has no entry. */
+export const CRAFT_GOLD: Record<Tier, number> = { green: 1, blue: 5, purple: 15, legendary: 50, mythic: 150 }
+/** PLACEHOLDER: three mats → one of the next tier costs 1 silver. */
+export const MERGE_FEE_SILVER = 1
+/** Same-tier repair kit restore. A higher-tier kit on lower-tier gear bumps the die one step. */
+export const KIT_DICE: Record<Tier, string> = {
+  green: '1d6+2', blue: '1d6+4', purple: '1d8+4', legendary: '1d8+6', mythic: '1d10+6',
+}
+export const KIT_PRICES: Record<Tier, number> = { green: 12, blue: 25, purple: 50, legendary: 120, mythic: 280 }
 export const nextTier = (t: Tier): Tier | null => TIERS[TIERS.indexOf(t) + 1] ?? null
 
 // ---------- C) Potions & scrolls ----------

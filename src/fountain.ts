@@ -18,8 +18,10 @@ export interface TownState {
   places: TownPlace[]
   currentId: string
   fountain: FountainState
-  /** Merchants added at the table. The built-in four are always available. */
+  /** Merchants added at the table. */
   merchants?: Merchant[]
+  /** Built-in example merchant ids the DM removed. Custom merchants are dropped from `merchants` instead. */
+  removedMerchantIds?: string[]
 }
 
 export function defaultTown(): TownState {

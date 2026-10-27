@@ -1,10 +1,11 @@
 // First-batch item art in public/items/. Emoji stays the fallback when nothing here matches.
-import { ARMOR_CATALOG, type Tier } from './armor'
+import type { Tier } from './armor'
 import { COMMON_WEAPONS } from './inventory'
 import type { Item } from './types'
 import { WEAPON_CATALOG } from './weapons'
 
-const ARMOR_IDS = new Set(ARMOR_CATALOG.map((a) => a.id))
+/** Only the first-batch PNGs. Newer armor (hide, plate, shields) keeps KIND_ICON until art lands. */
+const ARMOR_IDS = new Set<string>(['padded', 'leather', 'studded'])
 /** Catalog ids plus untiered quick-pick names (dagger, shortsword, …). */
 const WEAPON_IDS = new Set<string>([
   ...WEAPON_CATALOG.map((w) => w.id),

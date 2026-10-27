@@ -1,15 +1,12 @@
 // Using homebrew potions & scrolls, active effects, fusing and shop purchases.
 import type { ActiveEffect, Character, Item } from './types'
 import { uid } from './types'
-import { TIER_SHORT, armorById } from './armor'
-import { catalogItem, FUSE_FEES, FUSE_NOTE, nextTier, WEAPON_MISS_WEAR, type CatalogItem } from './catalog'
-import { addItem, armorItem, equip, recalcArmor, removeItem, unequip } from './inventory'
-import { durOf, isBroken, maxDur, missing, repairCost, setDur } from './durability'
-import { kitMatches, materialDef, materialItem, MATERIALS_PER_KIT, repairKitItem, salvageBundle, salvageRefundSilver } from './salvage'
-import { tieredWeapon, weaponById } from './weapons'
-import { fromSilver, purseSilver } from './party'
+import { TIER_SHORT } from './armor'
+import { catalogItem, nextTier, WEAPON_MISS_WEAR, type CatalogItem } from './catalog'
+import { addItem, equip, recalcArmor, removeItem, unequip } from './inventory'
+import { damagedFraction, durOf, isBroken, maxDur, missing, repairCost, setDur } from './durability'
+import { kitDiceFor, kitMatches } from './salvage'
 import { rollExpression } from './dice'
-import type { Tier } from './armor'
 
 export interface UseResult { char: Character; message: string; ok: boolean }
 const addEffect = (c: Character, e: Omit<ActiveEffect, 'id'>): Character => ({ ...c, effects: [...(c.effects ?? []).filter((x) => x.key !== e.key), { ...e, id: uid() }] })
@@ -85,38 +82,21 @@ export function useCatalogItem(c: Character, it: Item, cat: CatalogItem = catalo
   }
 }
 
-/** Matching-tier kit. PLACEHOLDER: restores the armor to full, including Broken. Does not spend gold. */
-export function applyTierKit(c: Character, kitId: string, armorItemId: string): UseResult {
+/** Tiered repair kit. Same tier uses KIT_DICE. A higher-tier kit on lower-tier gear bumps the die one step. Broken gear refuses the kit. */
+export function applyTierKit(c: Character, kitId: string, gearId: string): UseResult {
   const kit = (c.inventory ?? []).find((i) => i.id === kitId)
-  const armor = (c.inventory ?? []).find((i) => i.id === armorItemId)
-  if (!kit?.kitTier || !armor || armor.kind !== 'armor') return { char: c, ok: false, message: 'Choose a repair kit and an armor.' }
-  if (!kitMatches(kit, armor)) {
-    const who = kit.kitArmorId ? `${kit.kitArmorId} ` : ''
-    return { char: c, ok: false, message: `${kit.name} only repairs ${who}${TIER_SHORT[kit.kitTier]} armor.` }
-  }
-  if (!missing(armor)) return { char: c, ok: false, message: `${armor.name} is already at full durability.` }
-  const before = durOf(armor)
-  const n = recalcArmor(setDur(removeItem(c, kit.id, 1), armor.id, maxDur(armor)))
-  return { char: n, ok: true, message: `${c.name} uses ${kit.name} on ${armor.name}: durability ${before}→${maxDur(armor)}/${maxDur(armor)}. No blacksmith visit.` }
-}
-
-/** Craft one kit from two of the same material. Leaves leftover materials in the pack. */
-export function craftRepairKit(c: Character, materialKey: string): { char: Character; ok: boolean; message: string } {
-  const def = materialDef(materialKey)
-  if (!def) return { char: c, ok: false, message: 'Unknown material.' }
-  const rows = (c.inventory ?? []).filter((i) => i.materialKey === materialKey)
-  const have = rows.reduce((n, i) => n + i.qty, 0)
-  if (have < MATERIALS_PER_KIT) return { char: c, ok: false, message: `Need ${MATERIALS_PER_KIT} ${def.name} (have ${have}).` }
-  let n = c
-  let left = MATERIALS_PER_KIT
-  for (const it of rows) {
-    if (left <= 0) break
-    const take = Math.min(left, it.qty)
-    n = removeItem(n, it.id, take)
-    left -= take
-  }
-  const kit = repairKitItem(def)
-  return { char: addItem(n, kit), ok: true, message: `Crafted ${kit.name} from ${MATERIALS_PER_KIT} ${def.name}. PLACEHOLDER recipe.` }
+  const gear = (c.inventory ?? []).find((i) => i.id === gearId)
+  if (!kit?.kitTier || !gear) return { char: c, ok: false, message: 'Choose a repair kit and a piece of gear.' }
+  if (isBroken(gear)) return { char: c, ok: false, message: `${gear.name} is Broken. A kit can’t fix that — pay the blacksmith, or read a Scroll of Mending Steel.` }
+  if (!kitMatches(kit, gear)) return { char: c, ok: false, message: `${kit.name} only repairs ${TIER_SHORT[kit.kitTier]} gear, or a lower tier.` }
+  if (!missing(gear)) return { char: c, ok: false, message: `${gear.name} is already at full durability.` }
+  const dice = kitDiceFor(kit.kitTier, gear.tier!)
+  if (!dice) return { char: c, ok: false, message: `${kit.name} is too weak for ${gear.name}.` }
+  const before = durOf(gear)
+  const roll = rollExpression(dice)
+  const n = recalcArmor(setDur(removeItem(c, kit.id, 1), gear.id, before + Math.max(0, roll.total)))
+  const after = durOf(n.inventory!.find((x) => x.id === gear.id)!)
+  return { char: n, ok: true, message: `${c.name} uses ${kit.name} on ${gear.name}: ${roll.detail || roll.total} → durability ${before}→${after}/${maxDur(gear)}.` }
 }
 
 export function markForSalvage(c: Character, itemId: string): Character {
@@ -126,24 +106,6 @@ export function markForSalvage(c: Character, itemId: string): Character {
   return { ...base, inventory: (base.inventory ?? []).map((i) => (i.id === itemId ? { ...i, salvaged: true, equipped: false } : i)) }
 }
 
-/** Broken or marked armor → parts (enough for one kit) or a small coin refund. The armor is consumed. */
-export function salvageArmor(c: Character, itemId: string, mode: 'materials' | 'coins'): { char: Character; ok: boolean; message: string } {
-  const it = (c.inventory ?? []).find((i) => i.id === itemId)
-  if (!it || it.kind !== 'armor' || !it.tier) return { char: c, ok: false, message: 'Choose armor to salvage.' }
-  if (!isBroken(it) && !it.salvaged) return { char: c, ok: false, message: `${it.name} has to be Broken, or marked for salvage, before the blacksmith will break it down.` }
-  const base = it.equipped ? unequip(c, itemId) : c
-  let n = removeItem(base, itemId, 1)
-  if (mode === 'coins') {
-    const silver = salvageRefundSilver(it.tier)
-    n = { ...n, purse: fromSilver(purseSilver(n.purse) + silver) }
-    const g = Math.floor(silver / 10), s = silver % 10
-    return { char: n, ok: true, message: `Salvaged ${it.name} for ${g}g${s ? ` ${s}s` : ''}. PLACEHOLDER refund.` }
-  }
-  const bundle = salvageBundle(it.armorId, it.tier)
-  const mat = materialItem(bundle.materialKey, bundle.qty)
-  n = addItem(n, mat)
-  return { char: n, ok: true, message: `Salvaged ${it.name} into ${bundle.qty}× ${mat.name}. PLACEHOLDER mapping.` }
-}
 
 /** End combat clears fight effects; long rest clears long-rest effects (and fight ones) and weapon coatings. */
 export function clearEffects(c: Character, at: 'combat' | 'long'): Character {
@@ -174,63 +136,8 @@ export function buy(c: Character, item: Item, priceSilver: number): { char: Char
 export const fmtCost = (s: number) => `${Math.floor(s / 10)}g${s % 10 ? ` ${s % 10}s` : ''}`
 
 // ---------- Blacksmith ----------
-export interface FuseGroup { armorId: string; tier: Tier; items: Item[]; next: Tier | null; fee: number | null }
-export function fuseGroups(c: Character): FuseGroup[] {
-  const m = new Map<string, FuseGroup>()
-  for (const it of c.inventory ?? []) {
-    if (it.kind !== 'armor' || !it.armorId || !it.tier || it.atForge) continue
-    const k = it.armorId + ':' + it.tier
-    const g = m.get(k) ?? { armorId: it.armorId, tier: it.tier, items: [], next: nextTier(it.tier), fee: FUSE_FEES[it.tier] ?? null }
-    for (let i = 0; i < it.qty; i++) g.items.push(it)
-    m.set(k, g)
-  }
-  return [...m.values()]
-}
-export function fuse(c: Character, armorId: string, tier: Tier, opts: { atForge?: boolean } = {}): { char: Character; ok: boolean; message: string; item?: Item } {
-  const g = fuseGroups(c).find((x) => x.armorId === armorId && x.tier === tier)
-  const name = `${TIER_SHORT[tier]} ${armorById(armorId)?.name ?? ''} Armor`
-  if (!g || g.items.length < 2) return { char: c, ok: false, message: `Need two ${name}s to fuse.` }
-  if (!g.next || g.fee == null) return { char: c, ok: false, message: `${name} can't be fused any higher.` }
-  const fee = g.fee * 10
-  if (totalSilver(c) < fee) return { char: c, ok: false, message: `${c.name} needs ${g.fee}g for the blacksmith's fee.` }
-  let n = c
-  const [a, b] = g.items
-  n = removeItem(n, a.id, 1); n = removeItem(n, b.id, 1)
-  const left = totalSilver(n) - fee
-  const made = { ...armorItem(armorId, g.next), ...(opts.atForge ? { atForge: true } : {}) }
-  n = addItem({ ...n, purse: { gold: Math.floor(left / 10), silver: left % 10 } }, made)
-  return { char: n, ok: true, item: made, message: `${c.name} pays ${g.fee}g: two ${name}s → ${made.name}. ${FUSE_NOTE}${opts.atForge ? ' Marked “at the forge” until the DM taps Ready.' : ''}` }
-}
+/** Upgrade, craft, merge, and salvage live in blacksmith.ts. This only clears an old “at the forge” flag. */
 export const forgeReady = (c: Character, itemId: string): Character => ({ ...c, inventory: (c.inventory ?? []).map((i) => (i.id === itemId ? { ...i, atForge: undefined } : i)) })
-
-export interface WeaponFuseGroup { weaponId: string; tier: Tier; items: Item[]; next: Tier | null; fee: number | null }
-export function weaponFuseGroups(c: Character): WeaponFuseGroup[] {
-  const m = new Map<string, WeaponFuseGroup>()
-  for (const it of c.inventory ?? []) {
-    if (it.kind !== 'weapon' || !it.weaponId || !it.tier || it.special || it.atForge) continue
-    const k = it.weaponId + ':' + it.tier
-    const g = m.get(k) ?? { weaponId: it.weaponId, tier: it.tier, items: [], next: nextTier(it.tier), fee: FUSE_FEES[it.tier] ?? null }
-    for (let i = 0; i < it.qty; i++) g.items.push(it)
-    m.set(k, g)
-  }
-  return [...m.values()]
-}
-/** Two weapons of the same catalog id and tier, plus the same fee scale as armor, become the next tier. */
-export function fuseWeapon(c: Character, weaponId: string, tier: Tier, opts: { atForge?: boolean } = {}): { char: Character; ok: boolean; message: string; item?: Item } {
-  const g = weaponFuseGroups(c).find((x) => x.weaponId === weaponId && x.tier === tier)
-  const name = `${TIER_SHORT[tier]} ${weaponById(weaponId)?.name ?? 'weapon'}`
-  if (!g || g.items.length < 2) return { char: c, ok: false, message: `Need two ${name}s to fuse.` }
-  if (!g.next || g.fee == null) return { char: c, ok: false, message: `${name} can't be fused any higher. Mythic is the top of this ladder.` }
-  const fee = g.fee * 10
-  if (totalSilver(c) < fee) return { char: c, ok: false, message: `${c.name} needs ${g.fee}g for the blacksmith's fee.` }
-  let n = c
-  const [a, b] = g.items
-  n = removeItem(n, a.id, 1); n = removeItem(n, b.id, 1)
-  const left = totalSilver(n) - fee
-  const made = { ...tieredWeapon(weaponId, g.next), ...(opts.atForge ? { atForge: true } : {}) }
-  n = addItem({ ...n, purse: { gold: Math.floor(left / 10), silver: left % 10 } }, made)
-  return { char: n, ok: true, item: made, message: `${c.name} pays ${g.fee}g: two ${name}s → ${made.name}. ${FUSE_NOTE}${opts.atForge ? ' Marked “at the forge” until the DM taps Ready.' : ''}` }
-}
 
 // ---------- Durability ----------
 /** Wear the equipped (outer) armor. At 0 it breaks and is unequipped. */
@@ -241,7 +148,8 @@ export function applyWear(c: Character, amount: number): { char: Character; mess
   let n = setDur(c, a.id, now)
   if (now === 0) { n = unequip(n, a.id); return { char: n, itemId: a.id, prev, message: `${a.name} is BROKEN (0/${maxDur(a)}) and falls away — unequipped until a blacksmith repairs it.` } }
   n = recalcArmor(n)
-  const dmg = now <= maxDur(a) / 2 && prev > maxDur(a) / 2
+  const line = maxDur(a) * damagedFraction(a)
+  const dmg = now <= line && prev > line
   return { char: n, itemId: a.id, prev, message: `${a.name} durability ${prev}→${now}/${maxDur(a)}${dmg ? ' — now Damaged (−1 AC)' : ''}` }
 }
 /** Undo a wear: restore the previous durability (re-equip if it broke). */
@@ -271,7 +179,7 @@ export function applyWeaponWear(c: Character, itemId: string, outcome: 'hit' | '
 /** Blacksmith repair: points (or 'full'), cost per point by tier, Broken costs double. Armor and tiered weapons. */
 export function blacksmithRepair(c: Character, itemId: string, points: number | 'full'): { char: Character; ok: boolean; message: string } {
   const it = (c.inventory ?? []).find((x) => x.id === itemId)
-  if (!it || (it.kind !== 'armor' && it.kind !== 'weapon') || !it.tier || it.special) return { char: c, ok: false, message: 'Pick a piece of gear with a tier.' }
+  if (!it || (it.kind !== 'armor' && it.kind !== 'weapon' && it.kind !== 'shield') || !it.tier || it.special) return { char: c, ok: false, message: 'Pick a piece of gear with a tier.' }
   const pts = Math.min(missing(it), points === 'full' ? missing(it) : Math.max(0, points))
   if (!pts) return { char: c, ok: false, message: `${it.name} is already at full durability.` }
   const cost = repairCost(it, pts) * 10

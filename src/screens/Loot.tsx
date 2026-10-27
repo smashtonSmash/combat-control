@@ -1,5 +1,3 @@
-import { ShopForge } from '../components/ShopForge'
-import type { Merchant } from '../favor'
 import { ChestArt } from '../components/ChestArt'
 import { useEffect, useRef, useState } from 'react'
 import type { Character, Chest, Item } from '../types'
@@ -9,25 +7,21 @@ import { POUCH_ART_SRC } from '../itemArt'
 import { Sheet, Stepper } from '../components/Sheet'
 import { fmtCoins, purseTotal } from '../casino/money'
 import { coinsToSilver, splitEvenly, takeFrom } from '../loot'
-import type { RecapKind } from '../recap'
 import { WhoName, usePlayerDirectory } from '../components/PlayerName'
 import { withPlayer } from '../playerLabel'
 
 type Payload = { kind: 'item'; id: string } | { kind: 'pouch'; id: string }
 
-export default function Loot({ chests, saveChest, deleteChest, characters, onGiveItem, onGiveCoins, readOnly, online, onOpenReveal, onSaveChar, pendingLoot = [], onPendingLoot, onRecap, merchants = [] }: {
+export default function Loot({ chests, saveChest, deleteChest, characters, onGiveItem, onGiveCoins, readOnly, online, onOpenReveal, pendingLoot = [], onPendingLoot }: {
   chests: Chest[]; saveChest: (k: Chest) => void; deleteChest: (id: string) => void
   characters: Character[]
   onGiveItem: (charId: string, item: Item) => void
   onGiveCoins: (charId: string, gold: number, silver: number) => void
   readOnly?: boolean
-  onSaveChar?: (c: Character) => void
   online?: boolean
   onOpenReveal?: () => void
   pendingLoot?: Item[]
   onPendingLoot?: (items: Item[]) => void
-  onRecap?: (kind: RecapKind, text: string) => void
-  merchants?: Merchant[]
 }) {
   const [openId, setOpenId] = useState<string | null>(() => localStorage.getItem('dnd.lootChest'))
   useEffect(() => { if (openId) localStorage.setItem('dnd.lootChest', openId) }, [openId])
@@ -203,7 +197,6 @@ export default function Loot({ chests, saveChest, deleteChest, characters, onGiv
           ))}
         </div>
       )}
-      {!readOnly && onSaveChar && <ShopForge characters={characters} merchants={merchants} onSave={onSaveChar} onRecap={onRecap} />}
     </div>
   )
 }

@@ -18,19 +18,19 @@ describe('wear', () => {
     expect(wearFor({ crit: true, weak: true }).amount).toBe(3)
   })
   it('max by tier, missing dur = full', () => {
-    expect((['green', 'blue', 'purple', 'legendary', 'mythic'] as Tier[]).map((t) => maxDur({ ...armored(t).a }))).toEqual([10, 15, 20, 30, 40])
-    expect(durOf(armored('blue').a)).toBe(15)
+    expect((['green', 'blue', 'purple', 'legendary', 'mythic'] as Tier[]).map((t) => maxDur({ ...armored(t).a }))).toEqual([15, 20, 26, 36, 48])
+    expect(durOf(armored('blue').a)).toBe(20)
   })
   it('damaged at half: -1 AC; broken at 0 unequips; undo restores', () => {
-    const { c, a } = armored('green', 6)
+    const { c, a } = armored('green', 8)
     const ac0 = c.ac
     const w = applyWear(c, 1)
     expect(durState(inv(w.char, a.id))).toBe('damaged'); expect(w.char.ac).toBe(ac0 - 1); expect(w.char.armorDamaged).toBe(true)
-    const b = applyWear(w.char, 5)
+    const b = applyWear(w.char, 7)
     expect(isBroken(inv(b.char, a.id))).toBe(true); expect(inv(b.char, a.id).equipped).toBeFalsy(); expect(b.char.armorId).toBeUndefined()
     expect(equip(b.char, a.id)).toBe(b.char) // can't equip Broken
     const u = undoWear(b.char, a.id, b.prev!)
-    expect(inv(u, a.id).equipped).toBe(true); expect(durOf(inv(u, a.id))).toBe(5)
+    expect(inv(u, a.id).equipped).toBe(true); expect(durOf(inv(u, a.id))).toBe(7)
   })
 })
 
@@ -45,7 +45,7 @@ describe('repair', () => {
   it('blacksmith full repair deducts gold and caps at max', () => {
     const { c, a } = armored('purple', 5)
     const r = blacksmithRepair(c, a.id, 'full')
-    expect(r.ok).toBe(true); expect(durOf(inv(r.char, a.id))).toBe(20); expect(r.char.purse!.gold).toBe(100 - 45)
+    expect(r.ok).toBe(true); expect(durOf(inv(r.char, a.id))).toBe(26); expect(r.char.purse!.gold).toBe(100 - 63)
     expect(blacksmithRepair(r.char, a.id, 3).ok).toBe(false)
     expect(blacksmithRepair({ ...c, purse: { gold: 1, silver: 0 } }, a.id, 1).ok).toBe(false)
   })

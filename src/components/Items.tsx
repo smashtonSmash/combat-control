@@ -77,7 +77,7 @@ export function ItemPicker({ onAdd, customSpells = [] }: { onAdd: (it: Item) => 
             <button className="chip" onClick={() => onAdd(accessoryItem('iron-cap'))}>+ Iron Cap</button>
             <button className="chip" onClick={() => onAdd(accessoryItem('archer-gauntlets'))}>+ Archer’s Gauntlets</button>
             <button className="chip" onClick={() => onAdd(accessoryItem('softstep-boots'))}>+ Softstep Boots</button>
-            <button className="chip" onClick={() => onAdd(materialItem('wolf_pelt', 2))}>+ 2 Wolf Pelts</button>
+            <button className="chip" onClick={() => onAdd(materialItem('green', 2))}>+ 2 Green Material</button>
             <button className="chip" onClick={() => onAdd(pinkLantern())}>+ Pink Lantern</button>
             <button className="chip" onClick={() => onAdd(pinkCoin())}>+ Pink Coin</button>
             <button className="chip" onClick={() => onAdd(whisperfang())}>+ Whisperfang</button>

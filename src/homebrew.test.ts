@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { Character } from './types'
 import { shopPriceSilver } from './catalog'
-import { applyTierKit, applyWeaponWear, craftRepairKit, salvageArmor } from './effects'
+import { applyTierKit, applyWeaponWear } from './effects'
+import { craftRepairKit, salvageItem } from './blacksmith'
 import { carryCapacity, itemSlots, slotsUsed } from './encumbrance'
 import { favorAdjust, favorFace, MERCHANTS, REFUSE_FAVOR, refusesToSell } from './favor'
 import { FOUNTAIN_THRESHOLDS, offerToFountain, pickThreshold } from './fountain'
 import { addItem, armorItem, equip, potionOfHealing } from './inventory'
 import { catalogItem, catalogToItem } from './catalog'
 import { durOf, isBroken, maxDur } from './durability'
-import { kitsFromCount, materialDef, materialItem, repairKitItem } from './salvage'
+import { kitsFromCount, materialItem, matQty, repairKitItem } from './salvage'
 import { syncBlackMythic, whisperfang } from './specialGear'
 import { tieredWeapon } from './weapons'
 
@@ -24,14 +25,14 @@ describe('weapon miss-wear', () => {
   it('loses durability on a miss and not on a hit', () => {
     const w = tieredWeapon('longsword', 'green')
     const c = equip(hero({ inventory: [w] }), w.id)
-    expect(maxDur(row(c, w.id))).toBe(10)
+    expect(maxDur(row(c, w.id))).toBe(12)
     const miss = applyWeaponWear(c, w.id, 'miss')
     expect(miss.amount).toBe(1)
-    expect(durOf(row(miss.char, w.id))).toBe(9)
+    expect(durOf(row(miss.char, w.id))).toBe(11)
     const hit = applyWeaponWear(miss.char, w.id, 'hit')
     expect(hit.amount).toBe(0)
     expect(hit.char).toBe(miss.char)
-    expect(durOf(row(hit.char, w.id))).toBe(9)
+    expect(durOf(row(hit.char, w.id))).toBe(11)
   })
   it('breaks and unequips when a miss spends the last point', () => {
     const w = { ...tieredWeapon('dagger', 'green'), dur: 1 }
@@ -52,35 +53,34 @@ describe('kit crafting', () => {
     expect(kitsFromCount(2)).toBe(1)
     expect(kitsFromCount(5)).toBe(2)
   })
-  it('turns two wolf pelts into a Common leather kit and can fix Broken armor', () => {
-    const made = craftRepairKit(hero({ inventory: [materialItem('wolf_pelt', 5)] }), 'wolf_pelt')
+  it('turns two green mats into a Common kit and refuses Broken gear', () => {
+    const made = craftRepairKit(hero({ inventory: [materialItem('green', 5)] }), 'green')
     expect(made.ok).toBe(true)
-    expect(made.char.inventory!.find((i) => i.materialKey === 'wolf_pelt')!.qty).toBe(3)
-    const kit = made.char.inventory!.find((i) => i.kitTier === 'green' && i.kitArmorId === 'leather')!
+    expect(matQty(made.char, 'green')).toBe(3)
+    const kit = made.char.inventory!.find((i) => i.kitTier === 'green')!
     expect(kit.name).toMatch(/Common/)
-    expect(craftRepairKit(made.char, 'wolf_pelt').ok).toBe(true)
-    expect(craftRepairKit(craftRepairKit(made.char, 'wolf_pelt').char, 'wolf_pelt').ok).toBe(false)
+    expect(kit.kitArmorId).toBeUndefined()
+    expect(craftRepairKit(made.char, 'green').ok).toBe(true)
+    expect(craftRepairKit(craftRepairKit(made.char, 'green').char, 'green').ok).toBe(false)
 
     const broken = { ...armorItem('leather', 'green'), dur: 0 }
-    const padded = armorItem('padded', 'green')
-    const withKit = { ...made.char, inventory: [...made.char.inventory!, broken, padded] }
-    const wrong = applyTierKit(withKit, kit.id, padded.id)
-    expect(wrong.ok).toBe(false)
-    expect(wrong.char.inventory!.some((i) => i.id === kit.id)).toBe(true)
-    const fixed = applyTierKit(withKit, kit.id, broken.id)
+    const worn = { ...armorItem('padded', 'green'), dur: 4 }
+    const withKit = { ...made.char, inventory: [...made.char.inventory!, broken, worn] }
+    const refused = applyTierKit(withKit, kit.id, broken.id)
+    expect(refused.ok).toBe(false)
+    expect(refused.char.inventory!.some((i) => i.id === kit.id)).toBe(true)
+    const fixed = applyTierKit(withKit, kit.id, worn.id)
     expect(fixed.ok).toBe(true)
-    expect(durOf(row(fixed.char, broken.id))).toBe(maxDur(broken))
+    expect(durOf(row(fixed.char, worn.id))).toBeGreaterThan(4)
     expect(fixed.char.inventory!.some((i) => i.id === kit.id)).toBe(false)
+    expect(repairKitItem('green').kitTier).toBe('green')
   })
-  it('salvages broken leather into two wolf pelts, or a small refund', () => {
+  it('salvages broken leather into one green mat', () => {
     const a = { ...armorItem('leather', 'green'), dur: 0 }
-    const parts = salvageArmor(hero({ inventory: [a] }), a.id, 'materials')
+    const parts = salvageItem(hero({ inventory: [a] }), a.id)
     expect(parts.ok).toBe(true)
-    expect(parts.char.inventory!.find((i) => i.materialKey === 'wolf_pelt')!.qty).toBe(2)
-    expect(parts.message).toMatch(/PLACEHOLDER/)
-    const coins = salvageArmor(hero({ inventory: [a], purse: { gold: 1, silver: 0 } }), a.id, 'coins')
-    expect(coins.char.purse).toEqual({ gold: 3, silver: 0 })
-    expect(repairKitItem(materialDef('wolf_pelt')!).kitArmorId).toBe('leather')
+    expect(matQty(parts.char, 'green')).toBe(1)
+    expect(parts.char.inventory!.some((i) => i.id === a.id)).toBe(false)
   })
 })
 

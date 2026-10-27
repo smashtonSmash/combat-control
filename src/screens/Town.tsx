@@ -8,6 +8,8 @@ import { fmtCost } from '../effects'
 import { fromSilver, purseSilver } from '../party'
 import { addItem } from '../inventory'
 import { Stepper } from '../components/Sheet'
+import { ShopForge } from '../components/ShopForge'
+import { giveInspiration, inspirationOf, INSPIRATION_SLOTS } from '../inspiration'
 import { WhoName, usePlayerDirectory } from '../components/PlayerName'
 import { withPlayer } from '../playerLabel'
 import type { RecapKind } from '../recap'
@@ -34,7 +36,8 @@ export default function Town({ characters, town, onTown, onSave, isDM, onRecap }
   const c = characters.find((x) => x.id === charId)
   const who = c ? withPlayer(c.name, dir.label[c.id]) : ''
   const extras = town.merchants ?? []
-  const merchantList = allMerchants(extras)
+  const removed = town.removedMerchantIds ?? []
+  const merchantList = allMerchants(extras, removed)
   const merchant = merchantById(merchantId, extras) ?? merchantList[0]
   const favor = c ? favorOf(c, merchant.id) : 0
   const face = favorFace(favor)
@@ -129,6 +132,16 @@ export default function Town({ characters, town, onTown, onSave, isDM, onRecap }
               <Stepper label="Gold" value={gold} min={0} max={9999} onChange={setGold} />
               <Stepper label="Silver" value={silver} min={0} max={99} onChange={setSilver} />
             </div>
+            {isDM && c && (
+              <div className="row between">
+                <span className="small">Inspiration <b>{inspirationOf(c)}/{INSPIRATION_SLOTS}</b></span>
+                <button className="btn sm primary" disabled={inspirationOf(c) >= INSPIRATION_SLOTS} onClick={() => {
+                  const r = giveInspiration(c)
+                  setMsg(r.message)
+                  if (r.ok) onSave(r.char)
+                }}>Give inspiration</button>
+              </div>
+            )}
             <button className="btn primary" disabled={!c || !isDM} onClick={offer}>Offer {gold}g {silver}s</button>
             {!isDM && <div className="small muted">The DM records offerings here so the secret pool stays on one sheet. Favor still lives on your character.</div>}
           </>
@@ -159,7 +172,13 @@ export default function Town({ characters, town, onTown, onSave, isDM, onRecap }
               <div className="row">
                 <button className="btn sm" onClick={() => setFavor(favor - 5)}>− Favor</button>
                 <button className="btn sm" onClick={() => setFavor(favor + 5)}>+ Favor</button>
-                {merchant.custom && <button className="btn sm danger" onClick={() => { onTown({ ...town, merchants: extras.filter((m) => m.id !== merchant.id) }); setMerchantId(MERCHANTS[0].id) }}>Remove</button>}
+                <button className="btn sm danger" onClick={() => {
+                  const nextExtras = merchant.custom ? extras.filter((m) => m.id !== merchant.id) : extras
+                  const nextRemoved = merchant.custom ? removed : [...removed, merchant.id]
+                  const left = allMerchants(nextExtras, nextRemoved)
+                  onTown({ ...town, merchants: nextExtras, removedMerchantIds: nextRemoved })
+                  setMerchantId(left[0]?.id ?? '')
+                }}>Remove</button>
               </div>
             )}
           </>
@@ -179,6 +198,8 @@ export default function Town({ characters, town, onTown, onSave, isDM, onRecap }
         )}
         {!c && <div className="small muted">Add a character to track favor.</div>}
       </div>
+
+      {isDM && <ShopForge characters={characters} merchants={extras} removedMerchantIds={removed} onSave={onSave} onRecap={onRecap} />}
     </div>
   )
 }

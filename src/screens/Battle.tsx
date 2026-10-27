@@ -1,9 +1,9 @@
 import { DurBar } from '../components/DurBar'
 import { durOf, equippedArmor, isDamaged, maxDur, wearFor } from '../durability'
 import { applySecondWind, applyWear, applyWeaponWear, undoWear, clearEffects, effectOf, equippedWeapon, hasEffect } from '../effects'
-import { findSwungWeapon } from '../weapons'
+import { WEAPON_CATALOG, findSwungWeapon } from '../weapons'
 import { WEAPON_MISS_WEAR } from '../catalog'
-import { rollLoot, tableForMonster } from '../lootTables'
+import { inferLoadout, MONSTER_PIES, rollMonsterLoot, suggestMonsterTier } from '../lootTables'
 import type { RecapKind } from '../recap'
 import { Portrait } from '../components/Portrait'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -14,7 +14,7 @@ import { fmtMod, rollDie, rollExpression } from '../dice'
 import { characterToCombatant } from '../seed'
 import { NumField, Segmented, Sheet, Stepper, TextField } from '../components/Sheet'
 import { DamageTypePicker, TraitEditor } from '../components/Editors'
-import { TIER_COLORS, TIER_SHORT, combinedArmor } from '../armor'
+import { ARMOR_CATALOG, TIERS, TIER_COLORS, TIER_LABELS, TIER_SHORT, combinedArmor, type Tier } from '../armor'
 import { spellToHitBonus } from '../accessories'
 import { availableSlots, damageFor, scrollStats, spellMod } from '../spells'
 import { effectiveSlots } from '../components/Spells'
@@ -49,16 +49,12 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
   const [logOpen, setLogOpen] = useState(true)
   const [lootRoll, setLootRoll] = useState<{ name: string; items: Item[]; text: string } | null>(null)
   const rollFor = (m: Combatant) => {
-    const table = tableForMonster(m.name)
-    if (!table) {
-      const text = `${m.name} has no loot table.`
-      setLootRoll({ name: m.name, items: [], text })
-      return
-    }
-    const found = rollLoot(table)
+    const tier = m.lootTier ?? suggestMonsterTier(m.name)
+    const found = rollMonsterLoot(tier, inferLoadout(m))
+    const chance = tier === 'mythic' ? 100 : Math.round(MONSTER_PIES[tier].drop * 100)
     const text = found.length
       ? `${m.name}: ${found.map((i) => i.name).join(', ')}.`
-      : `${m.name}: nothing this time (parts ${Math.round(table.partChance * 100)}%, gear ${Math.round(table.gearChance * 100)}%).`
+      : `${m.name}: nothing this time (${TIER_LABELS[tier]} table, ${chance}% drop).`
     setLootRoll({ name: m.name, items: found, text })
     onRecap?.('drop', text)
   }
@@ -301,7 +297,12 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
         {monsters.length === 0 && <div className="small muted">No monsters in this fight.</div>}
         {monsters.map((m) => (
           <div key={m.id} className="row between">
-            <span>{m.name} {m.hp <= 0 ? <em>defeated</em> : <span className="muted">{m.hp} HP</span>}</span>
+            <span className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+              {m.name} {m.hp <= 0 ? <em>defeated</em> : <span className="muted">{m.hp} HP</span>}
+              <select aria-label={`${m.name} loot tier`} value={m.lootTier ?? suggestMonsterTier(m.name)} onChange={(e) => update(m.id, { lootTier: e.target.value as Tier })}>
+                {TIERS.map((t) => <option key={t} value={t}>{TIER_LABELS[t]}</option>)}
+              </select>
+            </span>
             <button className="btn sm" onClick={() => rollFor(m)}>Roll loot</button>
           </div>
         ))}
@@ -513,6 +514,7 @@ function AttackSheet({ attacker, target, onClose, onApply, caster, targetChar }:
   const traits = matchingTraits(target, type)
   const general = target.traits.filter((t) => !t.damageTypes.length)
   const arm = combinedArmor(target)
+  const canShrug = arm.shrugOff || arm.shrugType === type
   const rawAcBonus = arm.acVs[type] ?? 0
   const stoneskin = hasEffect(targetChar, 'stoneskin') && rawAcBonus < 0
   const acBonus = stoneskin ? 0 : rawAcBonus
@@ -731,7 +733,7 @@ function AttackSheet({ attacker, target, onClose, onApply, caster, targetChar }:
       {!healing && (acBonus !== 0 || target.armorTier) && (
         <div className="small">🛡 <b>AC {effAc}</b>{acBonus ? ` (${target.ac} ${acBonus > 0 ? '+' : '−'}${Math.abs(acBonus)} vs ${type})` : ` vs ${type}`}</div>
       )}
-      {!healing && (acBonus !== 0 || (arm.reduce[type] ?? 0) > 0 || canDeflect || arm.shrugOff) && (
+      {!healing && (acBonus !== 0 || (arm.reduce[type] ?? 0) > 0 || canDeflect || canShrug) && (
         <div className="reminder">
           <div className="reminder-head" style={target.armorTier ? { color: TIER_COLORS[target.armorTier] } : undefined}>🛡 {target.armor}</div>
           {acBonus !== 0 && <div className="reminder-item">{fmtMod(acBonus)} AC vs {DAMAGE_ICONS[type]} {type} → hits need <b>{effAc}</b></div>}
@@ -746,9 +748,9 @@ function AttackSheet({ attacker, target, onClose, onApply, caster, targetChar }:
               {d6 !== null && <div className={'atk-result ' + (d6 === 6 ? 'nat20' : 'miss')}>d6 = <b>{d6}</b> {d6 === 6 ? '— DEFLECTED! No damage.' : '— no deflect, damage applies.'}</div>}
             </div>
           )}
-          {arm.shrugOff && (
+          {canShrug && (
             <div className="reminder-item">
-              Shrug Off (1/day): {target.shrugUsed ? <b>already used today</b> : (
+              Shrug Off{arm.shrugType ? ` (${arm.shrugType} only)` : ''} (1/day): {target.shrugUsed ? <b>already used today</b> : (
                 <button className={'btn sm ' + (zeroBy === 'shrug' ? 'primary' : '')} onClick={() => setZeroBy(zeroBy === 'shrug' ? null : 'shrug')}>
                   {zeroBy === 'shrug' ? '✓ Shrug Off (tap to undo)' : 'Use Shrug Off'}</button>
               )}
@@ -892,6 +894,32 @@ function HpSheet({ c, onClose, onApply }: { c: Combatant; onClose: () => void; o
   )
 }
 
+function LootLoadoutFields({ d, set }: { d: Combatant; set: (p: Partial<Combatant>) => void }) {
+  const tier = d.lootTier ?? suggestMonsterTier(d.name || 'monster')
+  return (
+    <>
+      <label className="field"><span>Loot tier</span>
+        <select value={tier} onChange={(e) => set({ lootTier: e.target.value as Tier })}>
+          {TIERS.map((t) => <option key={t} value={t}>{TIER_LABELS[t]}</option>)}
+        </select>
+      </label>
+      <label className="field"><span>Held weapon (loot)</span>
+        <select value={d.lootWeaponId ?? ''} onChange={(e) => set({ lootWeaponId: e.target.value || undefined })}>
+          <option value="">Infer from attacks</option>
+          {WEAPON_CATALOG.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+        </select>
+      </label>
+      <label className="field"><span>Worn armor (loot)</span>
+        <select value={d.lootArmorId ?? ''} onChange={(e) => set({ lootArmorId: e.target.value || undefined })}>
+          <option value="">Infer from the armor line</option>
+          {ARMOR_CATALOG.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+        </select>
+      </label>
+      <div className="small muted">Light armor on the pie splits evenly across padded, leather, and studded. A named medium or heavy suit drops that suit.</div>
+    </>
+  )
+}
+
 // ---------------- Edit combatant ----------------
 function EditCombatantSheet({ c, onClose, onSave, onRemove, onDuplicate }: {
   c: Combatant; onClose: () => void; onSave: (p: Partial<Combatant>) => void; onRemove: () => void; onDuplicate: () => void
@@ -912,6 +940,7 @@ function EditCombatantSheet({ c, onClose, onSave, onRemove, onDuplicate }: {
             onChange={(e) => { const n = parseInt(e.target.value); set({ initiative: isNaN(n) ? null : n }) }} /></label>
       </div>
       <TextField label="Armor" value={d.armor} onChange={(v) => set({ armor: v })} />
+      {d.side === 'monster' && <LootLoadoutFields d={d} set={set} />}
       <div className="mini-label">Conditions</div>
       <div className="chips-row wrap">
         {CONDITIONS.map((x) => (
@@ -980,6 +1009,7 @@ function srdToTemplate(m: SrdMonster): Combatant {
     armor: ac?.armor?.map((x) => x.name).join(', ') || (ac?.type === 'natural' ? 'Natural armor' : ac?.type === 'dex' ? 'No armor' : ac?.type ?? ''),
     maxHp: m.hit_points, hp: m.hit_points, initMod: Math.floor(((m.dexterity ?? 10) - 10) / 2),
     initiative: null, traits, attacks, conditions: [],
+    lootTier: suggestMonsterTier(m.name),
   }
 }
 
@@ -1047,6 +1077,7 @@ function AddMonsterSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (tpl:
             <NumField label="Init mod" value={d.initMod} onChange={(v) => set({ initMod: v })} />
           </div>
           <TextField label="Armor" value={d.armor} onChange={(v) => set({ armor: v })} placeholder="Leather armor, shield" />
+          <LootLoadoutFields d={d} set={set} />
           {d.attacks.length > 0 && <div className="muted small pad">Attacks: {d.attacks.map((a) => `${a.name} (${fmtMod(a.toHit)}, ${a.damage} ${a.damageType})`).join(' · ')}</div>}
           <div className="mini-label">Traits</div>
           <TraitEditor traits={d.traits} onChange={(t) => set({ traits: t })} />

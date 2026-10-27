@@ -1,93 +1,115 @@
-// PLACEHOLDER loot tables. Easier monsters lean Common. Harder tables are where Legendary shows up.
-// Not every kill drops gear: each table has its own chance, defaulting near 20%.
+// Monster rarity pies. Pink and black named gear are not on these tables.
+// A gear hit is the weapon they are holding, or fitting armor.
+// Light armor (and anything we can't name) splits evenly across padded / leather / studded.
 import type { Item } from './types'
-import { uid } from './types'
 import type { Tier } from './armor'
+import { armorById } from './armor'
 import { armorItem } from './inventory'
-import { materialItem } from './salvage'
-import { tieredWeapon } from './weapons'
+import { type MatTier, materialItem } from './salvage'
+import { WEAPON_CATALOG, tieredWeapon, weaponById } from './weapons'
 
-type GearMake = 'weapon' | 'armor' | 'named'
-
-interface GearRow {
-  weight: number
-  make: GearMake
-  tier: Tier
+export interface MonsterLoadout {
   weaponId?: string
+  /** A specific medium or heavy suit. Light suits use lightSplit instead. */
   armorId?: string
-  /** Overrides the generated name (the "goblin something" case). */
-  name?: string
-}
-interface PartRow { weight: number; materialKey: string }
-
-export interface LootTable {
-  id: string
-  name: string
-  kind: 'monster' | 'location'
-  /** Chance a part drops. PLACEHOLDER scarce default ~0.2. */
-  partChance: number
-  /** Chance a piece of gear drops. Independent of the part roll. */
-  gearChance: number
-  parts: PartRow[]
-  gear: GearRow[]
+  lightSplit: boolean
 }
 
-export const LOOT_TABLES: LootTable[] = [
-  {
-    id: 'goblin', name: 'Goblin', kind: 'monster', partChance: 0.2, gearChance: 0.2,
-    parts: [{ weight: 1, materialKey: 'goblin_rag' }],
-    gear: [
-      { weight: 5, make: 'weapon', weaponId: 'dagger', tier: 'green', name: 'Goblin Shiv' },
-      { weight: 3, make: 'named', tier: 'green', name: 'Goblin Something' },
-      { weight: 1, make: 'weapon', weaponId: 'shortbow', tier: 'blue' },
+type Slice = { weight: number; kind: 'mat'; mat: MatTier } | { weight: number; kind: 'gear'; tier: Tier }
+
+export interface MonsterPie {
+  drop: number
+  slices: Slice[]
+}
+
+export const MONSTER_PIES: Record<Tier, MonsterPie> = {
+  green: {
+    drop: 0.2,
+    slices: [
+      { weight: 70, kind: 'mat', mat: 'gray' },
+      { weight: 5, kind: 'mat', mat: 'green' },
+      { weight: 25, kind: 'gear', tier: 'green' },
     ],
   },
-  {
-    id: 'wolf', name: 'Wolf', kind: 'monster', partChance: 0.2, gearChance: 0.05,
-    parts: [{ weight: 1, materialKey: 'wolf_pelt' }],
-    gear: [{ weight: 1, make: 'armor', armorId: 'leather', tier: 'green' }],
-  },
-  {
-    id: 'ogre', name: 'Ogre', kind: 'monster', partChance: 0.2, gearChance: 0.35,
-    parts: [{ weight: 1, materialKey: 'ogre_hide' }],
-    gear: [
-      { weight: 4, make: 'weapon', weaponId: 'greatsword', tier: 'green' },
-      { weight: 2, make: 'weapon', weaponId: 'greatsword', tier: 'blue' },
-      { weight: 1, make: 'weapon', weaponId: 'greatsword', tier: 'purple' },
+  blue: {
+    drop: 0.3,
+    slices: [
+      { weight: 35, kind: 'mat', mat: 'gray' },
+      { weight: 15, kind: 'mat', mat: 'green' },
+      { weight: 15, kind: 'mat', mat: 'blue' },
+      { weight: 20, kind: 'gear', tier: 'green' },
+      { weight: 15, kind: 'gear', tier: 'blue' },
     ],
   },
-  {
-    id: 'dragon', name: 'Dragon', kind: 'monster', partChance: 0.25, gearChance: 0.5,
-    parts: [{ weight: 1, materialKey: 'dragon_scale' }],
-    gear: [
-      { weight: 4, make: 'armor', armorId: 'studded', tier: 'legendary' },
-      { weight: 1, make: 'armor', armorId: 'studded', tier: 'mythic' },
+  purple: {
+    drop: 0.4,
+    slices: [
+      { weight: 15, kind: 'mat', mat: 'green' },
+      { weight: 20, kind: 'mat', mat: 'blue' },
+      { weight: 20, kind: 'mat', mat: 'purple' },
+      { weight: 10, kind: 'gear', tier: 'green' },
+      { weight: 15, kind: 'gear', tier: 'blue' },
+      { weight: 20, kind: 'gear', tier: 'purple' },
     ],
   },
-  {
-    id: 'road', name: 'Open Road', kind: 'location', partChance: 0.1, gearChance: 0.15,
-    parts: [{ weight: 1, materialKey: 'wolf_pelt' }],
-    gear: [
-      { weight: 4, make: 'weapon', weaponId: 'dagger', tier: 'green' },
-      { weight: 1, make: 'armor', armorId: 'padded', tier: 'green' },
+  legendary: {
+    drop: 0.6,
+    slices: [
+      { weight: 10, kind: 'gear', tier: 'green' },
+      { weight: 30, kind: 'gear', tier: 'blue' },
+      { weight: 30, kind: 'gear', tier: 'purple' },
+      { weight: 30, kind: 'gear', tier: 'legendary' },
     ],
   },
-  {
-    id: 'vault', name: 'Ancient Vault', kind: 'location', partChance: 0.15, gearChance: 0.4,
-    parts: [{ weight: 1, materialKey: 'dragon_scale' }],
-    gear: [
-      { weight: 3, make: 'weapon', weaponId: 'longsword', tier: 'purple' },
-      { weight: 2, make: 'armor', armorId: 'leather', tier: 'legendary' },
-      { weight: 1, make: 'weapon', weaponId: 'longsword', tier: 'mythic' },
-    ],
-  },
+  // Mythic is not a pie: always one legendary piece, plus a 50% extra mythic piece.
+  mythic: { drop: 1, slices: [] },
+}
+
+const LIGHT = ['padded', 'leather', 'studded']
+
+const ARMOR_MATCH: { id: string; re: RegExp }[] = [
+  { id: 'studded', re: /studded/i },
+  { id: 'half-plate', re: /half[\s-]*plate/i },
+  { id: 'breastplate', re: /breastplate/i },
+  { id: 'chain-shirt', re: /chain[\s-]*shirt/i },
+  { id: 'chain-mail', re: /chain[\s-]*mail|chainmail/i },
+  { id: 'scale-mail', re: /scale/i },
+  { id: 'ring-mail', re: /ring[\s-]*mail/i },
+  { id: 'splint', re: /splint/i },
+  { id: 'plate', re: /\bplate\b/i },
+  { id: 'leather', re: /leather/i },
+  { id: 'padded', re: /padded/i },
+  { id: 'hide', re: /\bhide\b/i },
 ]
 
-export const tableById = (id?: string) => LOOT_TABLES.find((t) => t.id === id)
-
-export function tableForMonster(name: string): LootTable | undefined {
+export function suggestMonsterTier(name: string): Tier {
   const n = name.toLowerCase()
-  return LOOT_TABLES.find((t) => t.kind === 'monster' && (n.includes(t.id) || n.includes(t.name.toLowerCase())))
+  if (/ancient|tarrasque|titan|lich|greatwyrm/.test(n)) return 'mythic'
+  if (/dragon|beholder|vampire|demon|devil|lich/.test(n)) return 'legendary'
+  if (/ogre|troll|giant|wyvern|owlbear/.test(n)) return 'purple'
+  if (/orc|hobgoblin|gnoll|bugbear|ogre/.test(n)) return 'blue'
+  return 'green'
+}
+
+export function inferLoadout(c: { armor?: string; attacks?: { name: string }[]; lootWeaponId?: string; lootArmorId?: string }): MonsterLoadout {
+  const weapons = [...WEAPON_CATALOG].sort((a, b) => b.name.length - a.name.length)
+  let weaponId = c.lootWeaponId && weaponById(c.lootWeaponId) ? c.lootWeaponId : undefined
+  if (!weaponId) {
+    for (const atk of c.attacks ?? []) {
+      const n = atk.name.toLowerCase()
+      const hit = weapons.find((w) => n.includes(w.name.toLowerCase()))
+      if (hit) { weaponId = hit.id; break }
+    }
+  }
+  let armorId = c.lootArmorId && armorById(c.lootArmorId) ? c.lootArmorId : undefined
+  if (!armorId && c.armor) {
+    const hit = ARMOR_MATCH.find((a) => a.re.test(c.armor!))
+    if (hit) armorId = hit.id
+  }
+  const cat = armorId ? armorById(armorId)?.category : undefined
+  const lightSplit = !armorId || cat === 'light'
+  if (lightSplit) armorId = undefined
+  return { weaponId, armorId, lightSplit }
 }
 
 function pickWeighted<T extends { weight: number }>(rows: T[], rng: () => number): T {
@@ -100,22 +122,26 @@ function pickWeighted<T extends { weight: number }>(rows: T[], rng: () => number
   return rows[rows.length - 1]
 }
 
-function gearItem(g: GearRow): Item {
-  if (g.make === 'weapon' && g.weaponId) {
-    const it = tieredWeapon(g.weaponId, g.tier)
-    return g.name ? { ...it, name: g.name } : it
-  }
-  if (g.make === 'armor' && g.armorId) return armorItem(g.armorId, g.tier)
-  return {
-    id: uid(), name: g.name ?? 'Goblin Something', kind: 'misc', qty: 1, tier: g.tier,
-    description: 'PLACEHOLDER loot-table find. Not every monster drops one of these.',
-  }
+function rollGear(tier: Tier, load: MonsterLoadout, rng: () => number): Item {
+  const weapon = load.weaponId && weaponById(load.weaponId) ? load.weaponId : undefined
+  const specific = load.armorId && armorById(load.armorId) ? load.armorId : undefined
+  const canWeapon = !!weapon
+  const canArmor = !!(specific || load.lightSplit)
+  if (canWeapon && (!canArmor || rng() < 0.5)) return tieredWeapon(weapon!, tier)
+  if (specific) return armorItem(specific, tier)
+  return armorItem(LIGHT[Math.floor(rng() * LIGHT.length)] ?? 'padded', tier)
 }
 
-/** Independent part roll and gear roll. Either, both, or neither. */
-export function rollLoot(table: LootTable, rng: () => number = Math.random): Item[] {
-  const out: Item[] = []
-  if (table.parts.length && rng() < table.partChance) out.push(materialItem(pickWeighted(table.parts, rng).materialKey, 1))
-  if (table.gear.length && rng() < table.gearChance) out.push(gearItem(pickWeighted(table.gear, rng)))
-  return out
+/** One kill. Mythic always drops legendary gear and has a 50% chance of an extra mythic piece. */
+export function rollMonsterLoot(tier: Tier, load: MonsterLoadout, rng: () => number = Math.random): Item[] {
+  if (tier === 'mythic') {
+    const out = [rollGear('legendary', load, rng)]
+    if (rng() < 0.5) out.push(rollGear('mythic', load, rng))
+    return out
+  }
+  const pie = MONSTER_PIES[tier]
+  if (!pie.slices.length || rng() >= pie.drop) return []
+  const slice = pickWeighted(pie.slices, rng)
+  if (slice.kind === 'mat') return [materialItem(slice.mat, 1)]
+  return [rollGear(slice.tier, load, rng)]
 }
