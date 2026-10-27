@@ -9,6 +9,7 @@ import { fromSilver, purseSilver } from '../party'
 import { addItem } from '../inventory'
 import { Stepper } from '../components/Sheet'
 import { ShopForge } from '../components/ShopForge'
+import { VaultPanel } from '../components/VaultPanel'
 import { giveInspiration, inspirationOf, INSPIRATION_SLOTS } from '../inspiration'
 import { WhoName, usePlayerDirectory } from '../components/PlayerName'
 import { withPlayer } from '../playerLabel'
@@ -211,7 +212,9 @@ export default function Town({ characters, town, onTown, onSave, isDM, onRecap }
         )}
       </div>
 
-      {isDM && <ShopForge characters={characters} merchants={extras} removedMerchantIds={removed} onSave={onSave} onRecap={onRecap} />}
+      <VaultPanel characters={characters} town={town} onTown={onTown} onSave={onSave} />
+
+      <ShopForge characters={characters} merchants={extras} removedMerchantIds={removed} onSave={onSave} onRecap={onRecap} isDM={isDM} />
     </div>
   )
 }

@@ -37,6 +37,56 @@ export const raceDef = (k?: string) => RACES.find((r) => r.key === k)
 export const classDef = (k?: string) => CLASSES.find((c) => c.key === k)
 export const bgDef = (k?: string) => BACKGROUNDS.find((b) => b.key === k)
 
+/** Primary abilities shown on the class list. Saves stay automatic; this is the class's main stats. */
+export const CLASS_PRIMARY: Record<string, string> = {
+  barbarian: 'STR', bard: 'CHA', cleric: 'WIS', druid: 'WIS', fighter: 'STR or DEX', monk: 'DEX & WIS',
+  paladin: 'STR & CHA', ranger: 'DEX & WIS', rogue: 'DEX', sorcerer: 'CHA', warlock: 'CHA', wizard: 'INT', artificer: 'INT',
+}
+
+/** Tool proficiencies that belong with a background. Skills live on the background itself. */
+const BG_TOOLS: Record<string, string[]> = {
+  charlatan: ['Disguise kit', 'Forgery kit'],
+  criminal: ["Thieves' tools", 'One gaming set'],
+  entertainer: ['Disguise kit', 'One musical instrument'],
+  'folk-hero': ["Artisan's tools", 'Vehicles (land)'],
+  'guild-artisan': ["Artisan's tools"],
+  hermit: ['Herbalism kit'],
+  noble: ['One gaming set'],
+  outlander: ['One musical instrument'],
+  sailor: ["Navigator's tools", 'Vehicles (water)'],
+  soldier: ['One gaming set', 'Vehicles (land)'],
+  urchin: ['Disguise kit', "Thieves' tools"],
+  'far-traveler': ['One instrument or gaming set'],
+  'clan-crafter': ["Artisan's tools"],
+}
+
+export function bonusText(b?: Bonus): string {
+  return ABIL_KEYS.filter((k) => (b?.[k] ?? 0) !== 0).map((k) => `${k.toUpperCase()} ${(b?.[k] ?? 0) > 0 ? '+' : ''}${b?.[k]}`).join(', ')
+}
+
+/** Short racial ASI line for a dropdown option. */
+export function raceOptionHint(r: RaceDef): string {
+  const bits: string[] = []
+  const fixed = bonusText(r.bonuses)
+  if (fixed) bits.push(fixed)
+  if (r.bonusChoice) bits.push(`choose ${r.bonusChoice.choose} × +${r.bonusChoice.amount}`)
+  if (!bits.length && r.subraces?.length) bits.push('see subrace')
+  return bits.join(' · ')
+}
+
+export function classOptionHint(c: ClassDef): string {
+  return `d${c.hitDie} · ${CLASS_PRIMARY[c.key] ?? c.saves.map((s) => s.toUpperCase()).join(', ')}`
+}
+
+export function backgroundTools(b: BgDef): string[] {
+  return BG_TOOLS[b.key] ?? []
+}
+
+export function backgroundOptionHint(b: BgDef): string {
+  const tools = backgroundTools(b)
+  return tools.length ? `${b.skills.join(', ')} · ${tools.join(', ')}` : b.skills.join(', ')
+}
+
 /** Bonuses printed on the ancestry (+ subrace). Opting out, or a saved/custom ancestry, leaves these at 0 so the player allocates instead. */
 export function fixedRaceBonus(c: Character): Bonus {
   if (c.origin?.noStandardBonus) return {}

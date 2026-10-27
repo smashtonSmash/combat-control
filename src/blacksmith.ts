@@ -87,13 +87,20 @@ export function upgradeGear(c: Character, itemIds: string[], swornType?: DamageT
   if (fee == null) return { char: c, ok: false, message: 'That piece cannot be upgraded.' }
   const paid = paySilver(c, fee * 10)
   if (!paid) return { char: c, ok: false, message: `${c.name} needs ${fee}g for the upgrade.` }
+  const currents: number[] = []
+  for (const [id, count] of uses) {
+    const it = rows.find((r) => r.id === id)!
+    const hp = durOf(it)
+    for (let i = 0; i < count; i++) currents.push(hp)
+  }
+  const lowest = Math.min(...currents)
   let n = paid
   for (const [id, count] of uses) n = removeItem(n, id, count)
-  const made = makeUpgraded(rows[0], next, swornType)
+  const made = { ...makeUpgraded(rows[0], next, swornType), dur: lowest }
   n = addItem(n, made)
   const cat = feeCategory(rows[0])
   const note = cat === 'medium' ? ' Medium fee ×2.' : cat === 'heavy' ? ' Heavy fee ×5.' : ''
-  return { char: n, ok: true, item: made, message: `${c.name} pays ${fee}g: three ${TIER_SHORT[from]} → ${made.name}.${note}` }
+  return { char: n, ok: true, item: made, message: `${c.name} pays ${fee}g: three ${TIER_SHORT[from]} → ${made.name}. HP ${lowest} (lowest of the three).${note}` }
 }
 
 export type CraftChoice = { kind: 'armor'; id: string } | { kind: 'weapon'; id: string } | { kind: 'shield'; id: string }

@@ -3,6 +3,7 @@ import { ARMOR_CATALOG, armorById, resolveArmor } from './armor'
 import { craftGear, craftRepairKit, mergeMats, salvageItem, upgradeGear } from './blacksmith'
 import { ARMOR_HP, CRAFT_GOLD, KIT_PRICES, UPGRADE_FEES, WEAPON_HP, WEAPON_SIZE_BY_ID } from './catalog'
 import { blacksmithRepair } from './effects'
+import { maxDur } from './durability'
 import { allMerchants } from './favor'
 import { giveInspiration, inspirationOf, spendInspiration } from './inspiration'
 import { armorItem, equip } from './inventory'
@@ -51,6 +52,31 @@ describe('upgrade 3 to 1', () => {
     expect(plate.char.purse!.gold).toBe(100 - 25)
     expect(upgradeGear(three(armorItem('leather', 'mythic'), 9999), ['a', 'b', 'c']).ok).toBe(false)
     expect(upgradeGear(hero({ inventory: [armorItem('leather', 'green'), armorItem('leather', 'green')] }), ['x', 'y', 'z']).ok).toBe(false)
+  })
+  it('sets the new piece’s HP to the lowest current HP of the three inputs', () => {
+    const leather = armorItem('leather', 'green')
+    const fused = upgradeGear(hero({
+      inventory: [
+        { ...leather, id: 'a', dur: 3 },
+        { ...leather, id: 'b', dur: 11 },
+        { ...leather, id: 'c' },
+      ],
+    }), ['a', 'b', 'c'])
+    expect(fused.ok).toBe(true)
+    const made = fused.item!
+    expect(made.dur).toBe(3)
+    expect(made.tier).toBe('blue')
+    expect(made.dur!).toBeLessThan(maxDur(made))
+    const dagger = tieredWeapon('dagger', 'green')
+    const weapons = upgradeGear(hero({
+      inventory: [
+        { ...dagger, id: 'd1', dur: 2 },
+        { ...dagger, id: 'd2', dur: 7 },
+        { ...dagger, id: 'd3', dur: 4 },
+      ],
+    }), ['d1', 'd2', 'd3'])
+    expect(weapons.item!.dur).toBe(2)
+    expect(weapons.item!.dur!).toBeLessThan(maxDur(weapons.item!))
   })
 })
 

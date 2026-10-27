@@ -33,6 +33,9 @@ import { AbilityGenerator } from '../components/AbilityGen'
 import { KIND_ICON } from '../inventory'
 import { WhoName, usePlayerDirectory } from '../components/PlayerName'
 import { cleanPlayerName } from '../playerLabel'
+import { LevelUpSheet } from '../components/LevelUp'
+import { manualGold } from '../gold'
+import { levelChecklist } from '../level'
 
 const blank = (): Character => ({
   id: uid(), name: '', cls: '', level: 1, race: '',
@@ -59,6 +62,7 @@ export default function Characters({ characters, onSave, onDelete, giveTargets =
   const [edit, setEdit] = useState<Character | null>(null)
   const [viewId, setViewId] = useState<string | null>(null)
   const [budgetOpen, setBudgetOpen] = useState(false)
+  const [levelUp, setLevelUp] = useState<{ pick: boolean; focusId?: string } | null>(null)
   const viewing = characters.find((c) => c.id === viewId)
   const people = roster ?? characters
   return (
@@ -67,6 +71,7 @@ export default function Characters({ characters, onSave, onDelete, giveTargets =
         <h1>Characters</h1>
         <div className="row">
           {onBudget && <button className="btn sm" aria-label="Origin settings" onClick={() => setBudgetOpen(!budgetOpen)}>⚙</button>}
+          {isDM && characters.length > 0 && <button className="btn sm" onClick={() => setLevelUp({ pick: true })}>Level up</button>}
           <button className="btn primary" onClick={() => setEdit(blank())}>＋ New</button>
         </div>
       </div>
@@ -105,7 +110,8 @@ export default function Characters({ characters, onSave, onDelete, giveTargets =
       {viewing && !edit && (
         <CharacterView c={viewing} onClose={() => setViewId(null)} onEdit={() => setEdit(structuredClone(viewing))} onPersist={onSave}
           giveTargets={giveTargets.filter((t) => t.id !== viewing.id)} onGive={onGive} onTransfer={onTransfer} onRecap={onRecap}
-          canAdd={isDM} roster={people} onAcceptTrade={onAcceptTrade} onDeclineTrade={onDeclineTrade} />
+          canAdd={isDM} roster={people} onAcceptTrade={onAcceptTrade} onDeclineTrade={onDeclineTrade}
+          onLevelUp={() => setLevelUp({ pick: false, focusId: viewing.id })} />
       )}
       {edit && (
         <CharacterSheet c={edit} customBudget={customBudget} allowReroll={allowReroll} isNew={!characters.some((x) => x.id === edit.id)} onClose={() => setEdit(null)}
@@ -113,6 +119,9 @@ export default function Characters({ characters, onSave, onDelete, giveTargets =
           giveTargets={giveTargets.filter((t) => t.id !== edit.id)} onGive={onGive} onTransfer={onTransfer} onRecap={onRecap}
           canAdd={isDM} library={library} onSaveOrigin={onSaveOrigin} roster={people} onAcceptTrade={onAcceptTrade} onDeclineTrade={onDeclineTrade}
           onDelete={() => { if (confirm(`Delete ${edit.name || 'this character'}?`)) { onDelete(edit.id); setEdit(null) } }} />
+      )}
+      {levelUp && (
+        <LevelUpSheet characters={characters} pick={levelUp.pick} focusId={levelUp.focusId} onClose={() => setLevelUp(null)} onSave={onSave} />
       )}
     </div>
   )
@@ -159,7 +168,7 @@ function CharacterSheet({ c, isNew, onClose, onSave, onDelete, onPersist, giveTa
           <Portrait src={d.portrait} name={d.name} size={84} /><span>📷</span>
         </button>
         <div className="grow">
-          <TextField label="Name" value={d.name} onChange={(v) => set({ name: v })} placeholder="Name" />
+          <TextField label="Name" value={d.name} onChange={(v) => set({ name: v })} placeholder="what is your name" />
           {account && <div className="small">Played by <b>{account}</b> <span className="muted">(campaign account)</span></div>}
           <TextField label="Player name" value={d.playerName ?? ''} onChange={(v) => set({ playerName: cleanPlayerName(v) })} placeholder="Optional" />
           <div className="small muted">{account ? 'Used offline, or when that account has no display name. Leave blank if you don’t know.' : 'Optional. Who plays this character, so the table can tell them apart. Leave blank if you don’t know.'}</div>
@@ -190,7 +199,7 @@ function CharacterSheet({ c, isNew, onClose, onSave, onDelete, onPersist, giveTa
           onChange={(v) => set({ profOverride: v })} />
         {d.profOverride !== undefined && <button className="link small" onClick={() => set({ profOverride: undefined })}>Auto from level (+{profFromLevel(d.level)})</button>}
       </div>
-      <CoinPurse d={d} set={set} targets={giveTargets} onTransfer={onTransfer} />
+      <CoinPurse d={d} set={set} targets={giveTargets} onTransfer={onTransfer} canAdd={canAdd} allowSend={!isNew} />
       <div className="mini-label">🧬 Traits & features</div>
       <FeatureEditor features={d.features ?? []} onChange={(f) => set({ features: f })} />
       <div className="mini-label">Combat traits & homebrew (resistances, armor perks…)</div>
@@ -201,7 +210,7 @@ function CharacterSheet({ c, isNew, onClose, onSave, onDelete, onPersist, giveTa
       <SpellsSection d={d} commit={(n) => { setD(n); if (!isNew && n.name.trim()) onPersist(n) }} />
       <div className="mini-label">🎒 Inventory</div>
       <TradeInbox c={d} roster={roster} onAccept={onAcceptTrade} onDecline={onDeclineTrade} />
-      <Inventory d={d} commit={(n) => { setD(n); if (!isNew && n.name.trim()) onPersist(n) }} giveTargets={isNew ? [] : giveTargets} onGive={onGive} onRecap={onRecap} canAdd={isNew || canAdd} />
+      <Inventory d={d} commit={(n) => { setD(n); if (!isNew && n.name.trim()) onPersist(n) }} giveTargets={isNew ? [] : giveTargets} onGive={onGive} onRecap={onRecap} canAdd={isNew || canAdd} ack={isNew} />
       <label className="field"><span>Character details</span>
         <textarea rows={4} value={d.details ?? ''} onChange={(e) => set({ details: e.target.value })} placeholder="Appearance, voice, clothes, and other customization." /></label>
       <label className="field"><span>Notes</span>
@@ -259,21 +268,21 @@ function ArmorPicker({ d, set, locked }: { d: Character; set: (p: Partial<Charac
   )
 }
 
-function CoinPurse({ d, set, targets = [], onTransfer }: { d: Character; set: (p: Partial<Character>) => void; targets?: { id: string; name: string }[]; onTransfer?: (fromId: string, toId: string, gold: number, silver: number) => void }) {
+function CoinPurse({ d, set, targets = [], onTransfer, canAdd = false, allowSend = true }: {
+  d: Character; set: (p: Partial<Character>) => void; targets?: { id: string; name: string }[]
+  onTransfer?: (fromId: string, toId: string, gold: number, silver: number) => void
+  canAdd?: boolean; allowSend?: boolean
+}) {
   const p = d.purse ?? { gold: 0, silver: 0 }
   const [amt, setAmt] = useState(1)
   const [coin, setCoin] = useState<'gold' | 'silver'>('gold')
   const [msg, setMsg] = useState('')
   const [toId, setToId] = useState(targets[0]?.id ?? '')
   const put = (gold: number, silver: number) => set({ purse: { gold, silver } })
-  const spend = () => {
-    const total = p.gold * 10 + p.silver, cost = coin === 'gold' ? amt * 10 : amt
-    if (cost > total) return setMsg('Not enough coin!')
-    let { gold, silver } = p
-    if (coin === 'gold' && gold >= amt) gold -= amt
-    else if (coin === 'silver' && silver >= amt) silver -= amt
-    else { const left = total - cost; gold = Math.floor(left / 10); silver = left % 10; setMsg('Made change automatically (1 gp = 10 sp).'); return put(gold, silver) }
-    setMsg(''); put(gold, silver)
+  const run = (kind: 'add' | 'spend') => {
+    const r = manualGold(p, kind, coin, amt, canAdd)
+    setMsg(r.message)
+    if (r.ok) put(r.purse.gold, r.purse.silver)
   }
   return (
     <div className="panel purse">
@@ -290,16 +299,17 @@ function CoinPurse({ d, set, targets = [], onTransfer }: { d: Character; set: (p
         </div>
       </div>
       <div className="row">
-        <button className="btn grow" onClick={() => { setMsg(''); coin === 'gold' ? put(p.gold + amt, p.silver) : put(p.gold, p.silver + amt) }}>＋ Add</button>
-        <button className="btn grow" onClick={spend}>− Spend</button>
+        {canAdd && <button className="btn grow" onClick={() => run('add')}>＋ Add</button>}
+        <button className="btn grow" onClick={() => run('spend')}>− Spend</button>
       </div>
+      {!canAdd && <div className="small muted">Spend is yours. Adding gold is the DM. Loot and a town sale still pay you.</div>}
       <div className="row">
         <button className="btn sm grow" disabled={p.silver < 10} onClick={() => put(p.gold + Math.floor(p.silver / 10), p.silver % 10)}>⇄ Silver → Gold</button>
         <button className="btn sm grow" disabled={p.gold < 1} onClick={() => put(p.gold - 1, p.silver + 10)}>⇄ 1 Gold → 10 Silver</button>
       </div>
       {msg && <div className="small">{msg}</div>}
       <div className="small muted">1 gold = 10 silver. Merchants on the Town tab haggle from favor, not from the coin itself.</div>
-      {onTransfer && targets.length > 0 && (
+      {allowSend && onTransfer && targets.length > 0 && (
         <>
           <div className="mini-label">Send to another character</div>
           <div className="chips-row wrap">{targets.map((t) => <button key={t.id} type="button" className={'chip ' + (toId === t.id ? 'on' : '')} onClick={() => setToId(t.id)}><WhoName id={t.id} name={t.name} /></button>)}</div>
@@ -310,10 +320,11 @@ function CoinPurse({ d, set, targets = [], onTransfer }: { d: Character; set: (p
   )
 }
 
-function Inventory({ d, commit, giveTargets, onRecap, canAdd }: {
+function Inventory({ d, commit, giveTargets, onRecap, canAdd, ack = false }: {
   d: Character; commit: (c: Character) => void; giveTargets: { id: string; name: string }[]; onGive?: GiveFn
   onRecap?: (kind: RecapKind, text: string) => void
   canAdd: boolean
+  ack?: boolean
 }) {
   const inv = d.inventory ?? []
   const [sel, setSel] = useState<string | null>(null)
@@ -419,7 +430,7 @@ function Inventory({ d, commit, giveTargets, onRecap, canAdd }: {
         </div>
       )}
       {canAdd && <button className="btn ghost sm" onClick={() => setAdding(!adding)}>{adding ? 'Done adding' : '+ Add item'}</button>}
-      {canAdd && adding && <ItemPicker customSpells={(d.spells ?? []).filter((s) => !s.srd)} onAdd={(x) => { commit(addItem(d, x)); setMsg(`Added ${x.name}.`) }} />}
+      {canAdd && adding && <ItemPicker ack={ack} customSpells={(d.spells ?? []).filter((s) => !s.srd)} onAdd={(x) => { commit(addItem(d, x)); setMsg(`Added ${x.name}.`) }} />}
       {!canAdd && <div className="small muted">You can drop gear or offer it. Adding a new item is for the DM, or for starting gear while this character is being created.</div>}
     </div>
   )
@@ -448,7 +459,23 @@ function TradeInbox({ c, roster, onAccept, onDecline }: {
   )
 }
 
-function CharacterView({ c, onClose, onEdit, onPersist, giveTargets, onGive, onTransfer, onRecap, canAdd, roster = [], onAcceptTrade, onDeclineTrade }: {
+function LevelTasks({ c, commit }: { c: Character; commit: (n: Character) => void }) {
+  const tasks = c.levelTasks
+  if (!tasks || tasks.level !== c.level) return null
+  const checks = levelChecklist(c, c.level)
+  if (!checks.asi && !checks.spells) return null
+  const toggle = (key: 'asi' | 'feat' | 'spells') => commit({ ...c, levelTasks: { ...tasks, [key]: !tasks[key] } })
+  return (
+    <div className="panel">
+      <b className="small">Level {c.level} checklist</b>
+      {checks.asi && <label className="row small"><input type="checkbox" checked={!!tasks.asi} onChange={() => toggle('asi')} /> Ability Score Improvement</label>}
+      {checks.feat && <label className="row small"><input type="checkbox" checked={!!tasks.feat} onChange={() => toggle('feat')} /> Feat, if you take one instead</label>}
+      {checks.spells && <label className="row small"><input type="checkbox" checked={!!tasks.spells} onChange={() => toggle('spells')} /> New spells or cantrips</label>}
+    </div>
+  )
+}
+
+function CharacterView({ c, onClose, onEdit, onPersist, giveTargets, onGive, onTransfer, onRecap, canAdd, roster = [], onAcceptTrade, onDeclineTrade, onLevelUp }: {
   c: Character; onClose: () => void; onEdit: () => void; onPersist: (c: Character) => void; giveTargets: { id: string; name: string }[]; onGive?: GiveFn
   onTransfer?: (fromId: string, toId: string, gold: number, silver: number) => void
   onRecap?: (kind: RecapKind, text: string) => void
@@ -456,6 +483,7 @@ function CharacterView({ c, onClose, onEdit, onPersist, giveTargets, onGive, onT
   roster: Character[]
   onAcceptTrade?: (fromId: string, tradeId: string) => void
   onDeclineTrade?: (fromId: string, tradeId: string) => void
+  onLevelUp?: () => void
 }) {
   const prof = charProf(c)
   const cur = c.currentHp ?? c.maxHp, temp = c.tempHp ?? 0
@@ -509,6 +537,7 @@ function CharacterView({ c, onClose, onEdit, onPersist, giveTargets, onGive, onT
         <div className="row">
           {canAdd && <button className="btn sm primary" disabled={inspirationOf(c) >= INSPIRATION_SLOTS} onClick={() => { const r = giveInspiration(c); if (r.ok) commit(r.char) }}>Give inspiration</button>}
           <button className="btn sm" disabled={inspirationOf(c) <= 0} onClick={() => { const r = spendInspiration(c); if (r.ok) commit(r.char) }}>Spend inspiration</button>
+          <button className="btn sm primary" disabled={c.level >= 20} onClick={onLevelUp}>Level up</button>
         </div>
         <section className="cv-sec"><h3>⚔️ Equipped</h3>
           <BodyDoll c={c} />
@@ -526,7 +555,8 @@ function CharacterView({ c, onClose, onEdit, onPersist, giveTargets, onGive, onT
         <section className="cv-sec"><h3>🎒 Inventory</h3>
           <TradeInbox c={c} roster={roster} onAccept={onAcceptTrade} onDecline={onDeclineTrade} />
           <Inventory d={c} commit={commit} giveTargets={giveTargets} onGive={onGive} onRecap={onRecap} canAdd={canAdd} />
-          {onTransfer && <CoinPurse d={c} set={(p) => commit({ ...c, ...p })} targets={giveTargets} onTransfer={onTransfer} />}
+          {onTransfer && <CoinPurse d={c} set={(p) => commit({ ...c, ...p })} targets={giveTargets} onTransfer={onTransfer} canAdd={canAdd} />}
+          <LevelTasks c={c} commit={commit} />
         </section>
         {(c.spells?.length || c.spellcasting || c.slots) ? <section className="cv-sec"><h3>✨ Spells</h3><SpellsSection d={c} commit={commit} /></section> : null}
         <section className="cv-sec"><h3>🧬 Traits & features</h3>

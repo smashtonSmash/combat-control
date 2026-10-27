@@ -31,6 +31,9 @@ import { InspirationShow } from './components/InspirationShow'
 import { playerDirectory } from './playerLabel'
 import { uid } from './types'
 import { migrateTiers } from './armor'
+import { isStubDropName, withoutStubDrops } from './loot'
+import { receiveGold } from './gold'
+import { mergeTown } from './townSync'
 
 const emptyEncounter = (): Encounter => ({ combatants: [], round: 1, turnId: null, log: [] })
 const joinFromHash = () => { const m = location.hash.match(/join=([A-Za-z0-9]+)/); return m ? m[1].toUpperCase() : undefined }
@@ -268,7 +271,6 @@ export default function App() {
     hydrated.current = homebrewKey
     const h = active.settings.homebrew
     if (h.party) setParty(h.party)
-    if (h.town) setTown(h.town)
     if (h.recap) setRecap(h.recap)
     if (h.library?.length) setLibrary(h.library)
     if (h.notes) setSharedNote(h.notes)
@@ -286,14 +288,35 @@ export default function App() {
     return next
   })
   const saveParty = (p: PartyStash) => { setParty(p); pushHomebrew({ party: p }) }
-  const saveTown = (t: TownState) => { setTown(t); pushHomebrew({ town: t }) }
+  const townRef = useRef(town)
+  townRef.current = town
+  const saveTown = (t: TownState) => {
+    const prev = townRef.current
+    townRef.current = t
+    setTown(t)
+    if (!online || !active) return
+    if (isDM) {
+      const remote = active.settings?.homebrew?.town
+      const remoteRev = remote?.vaultRev ?? 0
+      const next = remote && remoteRev > (t.vaultRev ?? 0) ? { ...t, vault: remote.vault, vaultRev: remote.vaultRev } : t
+      if (next !== t) { townRef.current = next; setTown(next) }
+      pushHomebrew({ town: next })
+      return
+    }
+    if ((t.vaultRev ?? 0) > (prev.vaultRev ?? 0)) {
+      void supabase.rpc('save_vault', { cid: active.id, vault: t.vault ?? {}, vault_rev: t.vaultRev ?? 0 }).then(({ error }) => {
+        if (error) cloud.setError(`${error.message} Vault sync needs supabase/batch_v8.sql. Saved on this device.`)
+      })
+    }
+  }
   const giveItemTo = (charId: string, item: Item) => {
+    if (isStubDropName(item.name)) return
     const c = allChars.find((x) => x.id === charId)
     if (c) { saveCharacter(addItem(c, item)); note('loot', `${c.name} received ${item.name}${item.qty > 1 ? ` ×${item.qty}` : ''}.`) }
   }
   const giveCoinsTo = (charId: string, gold: number, silver: number) => {
     const c = allChars.find((x) => x.id === charId)
-    if (c) saveCharacter({ ...c, purse: { gold: (c.purse?.gold ?? 0) + gold, silver: (c.purse?.silver ?? 0) + silver } })
+    if (c) saveCharacter({ ...c, purse: receiveGold(c.purse, gold, silver) })
   }
   const transferCoins = async (fromId: string, toId: string, gold: number, silver: number) => {
     const from = allChars.find((x) => x.id === fromId)
@@ -374,11 +397,12 @@ export default function App() {
     saveCharacter(declineTrade(from, tradeId))
   }
   const routeLoot = (items: Item[], target: { kind: 'chest' } | { kind: 'player'; charId: string }) => {
-    if (!items.length) return
-    if (target.kind === 'player') { for (const it of items) giveItemTo(target.charId, it); return }
+    const clean = withoutStubDrops(items)
+    if (!clean.length) return
+    if (target.kind === 'player') { for (const it of clean) giveItemTo(target.charId, it); return }
     const base = chests[0] ?? { id: uid(), name: 'Chest 1', items: [] as Item[], gold: 0, silver: 0, pouches: [] }
-    saveChest({ ...base, items: [...base.items, ...items], updated: Date.now() })
-    note('drop', `Chest receives ${items.map((i) => i.name).join(', ')}.`)
+    saveChest({ ...base, items: [...base.items, ...clean], updated: Date.now() })
+    note('drop', `Chest receives ${clean.map((i) => i.name).join(', ')}.`)
   }
   const giveBetween = async (from: Character, toId: string, itemId: string) => {
     const item = (from.inventory ?? []).find((i) => i.id === itemId)
@@ -411,9 +435,23 @@ export default function App() {
 
   const deleteCharacter = (id: string) => (online ? cloud.deleteChar(id) : setCharacters((cs) => cs.filter((c) => c.id !== id)))
 
+  const townSeen = useRef<string | null>(null)
+  useEffect(() => {
+    if (!online || !active) { townSeen.current = null; return }
+    const remote = active.settings?.homebrew?.town
+    if (!remote) return
+    if (townSeen.current !== active.id) {
+      townSeen.current = active.id
+      setTown(remote)
+      return
+    }
+    setTown((local) => mergeTown(local, remote, isDM ? 'dm' : 'player'))
+  }, [online, isDM, active, setTown])
   useEffect(() => {
     if (!online || !session) return
-    if (!isDM && tab !== 'campaign' && tab !== 'casino') return
+    const onTown = tab === 'town'
+    if (!isDM && tab !== 'campaign' && tab !== 'casino' && !onTown) return
+    if (isDM && !onTown) return
     const id = window.setInterval(() => { void refreshCampaigns() }, 4000)
     return () => window.clearInterval(id)
   }, [online, isDM, tab, session, refreshCampaigns])
@@ -472,7 +510,7 @@ export default function App() {
         {tab === 'campaign' && <Campaign pages={pages} setPages={setPages} note={sharedNote} onSaveNote={saveNote} author={author} />}
         {tab === 'loot' && <Loot chests={chests} saveChest={saveChest} deleteChest={deleteChest} characters={allChars} onGiveItem={giveItemTo} onGiveCoins={giveCoinsTo} readOnly={online && !isDM} online={online} onOpenReveal={() => setDismissedReveal(null)} pendingLoot={pendingLoot} onPendingLoot={setPendingLoot} />}
         {tab === 'casino' && <Casino characters={casinoChars} adjust={adjustCoins} table={casinoTable} isDealer={!online || isDM} localIds={casinoChars.map((c) => c.id)} onCommit={commitTable} onAct={sendCasino} />}
-        {tab === 'town' && <Town characters={allChars} town={town} onTown={saveTown} onSave={saveCharacter} isDM={!online || isDM} onRecap={note} />}
+        {tab === 'town' && <Town characters={!online || isDM ? allChars : characters} town={town} onTown={saveTown} onSave={saveCharacter} isDM={!online || isDM} onRecap={note} />}
         {tab === 'rules' && <Rules recap={recap} onClearRecap={() => { setRecap([]); pushHomebrew({ recap: [] }) }} />}
       </main>
       {showReveal && revealed && <RevealOverlay chest={revealed} myChars={characters} onTake={(what, ref, charId, g, s) => cloud.takeLoot(revealed.id, charId, what, ref, g, s)} onClose={() => setDismissedReveal(revealed.revealedAt ?? null)} />}

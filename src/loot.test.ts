@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { splitEvenly, takeFrom } from './loot'
+import { isStubDropName, splitEvenly, takeFrom, withoutStubDrops } from './loot'
 import { MONSTER_PIES, inferLoadout, rollMonsterLoot, suggestMonsterTier } from './lootTables'
 
 describe('loot coins', () => {
@@ -42,5 +42,20 @@ describe('monster loot pies', () => {
     expect(loadout.weaponId).toBe('greataxe')
     expect(loadout.armorId).toBe('chain-mail')
     expect(loadout.lightSplit).toBe(false)
+  })
+})
+
+describe('stub drop names', () => {
+  it('drops only the example labels, not a real goblin or a named item', () => {
+    expect(isStubDropName('goblin')).toBe(true)
+    expect(isStubDropName('Goblin Something')).toBe(true)
+    expect(isStubDropName('Common Dagger')).toBe(false)
+    expect(isStubDropName('Goblin 1')).toBe(false)
+    const kept = withoutStubDrops([
+      { name: 'goblin something' },
+      { name: 'Common Dagger' },
+      { name: 'Goblin 1' },
+    ])
+    expect(kept.map((i) => i.name)).toEqual(['Common Dagger', 'Goblin 1'])
   })
 })

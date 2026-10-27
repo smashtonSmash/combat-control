@@ -748,3 +748,16 @@ b.bad{color:#f66} b.warn,.warn{color:#f0b84a}
 @keyframes inspo-pop{0%{box-shadow:0 0 0 0 rgba(255,255,255,.9),0 0 0 0 rgba(240,213,138,.6);opacity:1}100%{box-shadow:0 0 0 40px rgba(255,255,255,0),0 0 0 80px rgba(240,213,138,0);opacity:0}}
 @keyframes inspo-label{0%{opacity:0;transform:translateY(8px)}30%{opacity:1}80%{opacity:1}100%{opacity:0}}
 @media (prefers-reduced-motion:reduce){.inspo-orb,.inspo-pop,.inspo-label{animation:none;opacity:1;margin-top:18vh}}
+
+/* Tap flash when a starting item is added, and the level-up celebration. */
+html.add-flash::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:100;background:rgba(255,244,214,.55);animation:add-flash 200ms ease-out forwards}
+@keyframes add-flash{from{opacity:1}to{opacity:0}}
+.level-burst{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;pointer-events:none;background:radial-gradient(circle,rgba(240,213,138,.45),transparent 60%);animation:level-pop 1.4s ease-out forwards}
+.level-burst b{font-size:64px;color:#f0d58a;text-shadow:0 0 24px #f08a2a}
+@keyframes level-pop{0%{opacity:0}15%{opacity:1}100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){html.add-flash::before,.level-burst{animation:none}}
+
+.vault-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.vault-slot{min-height:54px;border:1px dashed var(--line);border-radius:8px;padding:4px;font-size:11px;background:#120f0c;color:inherit;text-align:left}
+.vault-slot.filled{border-style:solid}
+.doll-head.tinted,.doll-body.tinted,.doll-arm.tinted,.doll-leg.tinted{border-style:solid}

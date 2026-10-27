@@ -3,6 +3,7 @@ import { durOf, equippedArmor, isDamaged, maxDur, wearFor } from '../durability'
 import { applySecondWind, applyWear, applyWeaponWear, undoWear, clearEffects, effectOf, equippedWeapon, hasEffect } from '../effects'
 import { WEAPON_CATALOG, findSwungWeapon } from '../weapons'
 import { WEAPON_MISS_WEAR } from '../catalog'
+import { withoutStubDrops } from '../loot'
 import { inferLoadout, MONSTER_PIES, rollMonsterLoot, suggestMonsterTier } from '../lootTables'
 import type { RecapKind } from '../recap'
 import { Portrait } from '../components/Portrait'
@@ -50,7 +51,7 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
   const [lootRoll, setLootRoll] = useState<{ name: string; items: Item[]; text: string } | null>(null)
   const rollFor = (m: Combatant) => {
     const tier = m.lootTier ?? suggestMonsterTier(m.name)
-    const found = rollMonsterLoot(tier, inferLoadout(m))
+    const found = withoutStubDrops(rollMonsterLoot(tier, inferLoadout(m)))
     const chance = tier === 'mythic' ? 100 : Math.round(MONSTER_PIES[tier].drop * 100)
     const text = found.length
       ? `${m.name}: ${found.map((i) => i.name).join(', ')}.`
@@ -1060,7 +1061,7 @@ function AddMonsterSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (tpl:
       <Segmented value={tab} onChange={setTab} options={[{ value: 'srd', label: '📖 Search SRD' }, { value: 'custom', label: '✍️ Custom' }]} />
       {tab === 'srd' ? (
         <>
-          <input className="search" autoFocus placeholder="Search monsters (goblin, zombie, owlbear…)" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className="search" autoFocus placeholder="Search monsters (zombie, skeleton, owlbear…)" value={q} onChange={(e) => setQ(e.target.value)} />
           {status && <div className="muted small pad">{status}</div>}
           <div className="results">
             {results.slice(0, 40).map((r) => <button key={r.index} className="list-row btnlike" onClick={() => choose(r.index)}><b>{r.name}</b><span>›</span></button>)}
@@ -1070,7 +1071,7 @@ function AddMonsterSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (tpl:
       ) : (
         <>
           {fromSrd && <div className="muted small pad">Prefilled from the SRD — tweak anything before adding.</div>}
-          <TextField label="Name" value={d.name} onChange={(v) => set({ name: v })} placeholder="Goblin" />
+          <TextField label="Name" value={d.name} onChange={(v) => set({ name: v })} placeholder="Monster name" />
           <div className="grid3">
             <NumField label="AC" value={d.ac} onChange={(v) => set({ ac: v })} />
             <NumField label="Max HP" value={d.maxHp} onChange={(v) => set({ maxHp: v, hp: v })} />

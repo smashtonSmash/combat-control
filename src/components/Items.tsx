@@ -15,6 +15,7 @@ import { fromSrd, loadSpells, type CharSpell, type SrdSpell } from '../spells'
 import { CustomSpell } from './Spells'
 import { DAMAGE_ICONS } from '../types'
 import { CONSUMABLES, armorPrice, catalogToItem, displayName, itemPrice } from '../catalog'
+import { ackTap } from '../feedback'
 
 /** PNG when one exists; emoji if art is missing or fails to load. */
 export function ItemArt({ src, fallback }: { src: string | null; fallback: string }) {
@@ -47,7 +48,8 @@ export function ItemCard({ it, selected, onClick, onPointerDown, dragging }: {
 }
 
 /** Quick picks + custom item form. */
-export function ItemPicker({ onAdd, customSpells = [] }: { onAdd: (it: Item) => void; customSpells?: CharSpell[] }) {
+export function ItemPicker({ onAdd, customSpells = [], ack = false }: { onAdd: (it: Item) => void; customSpells?: CharSpell[]; ack?: boolean }) {
+  const add = (it: Item) => { if (ack) ackTap(); onAdd(it) }
   const [armorId, setArmorId] = useState(ARMOR_CATALOG[0].id)
   const [tier, setTier] = useState<Tier>('green')
   const [custom, setCustom] = useState<{ name: string; kind: ItemKind; qty: number; description: string; damage: string; damageType: DamageType; heal: string; rarity: string }>(
@@ -61,26 +63,26 @@ export function ItemPicker({ onAdd, customSpells = [] }: { onAdd: (it: Item) => 
         <button type="button" className={open === 'scroll' ? 'on' : ''} onClick={() => setOpen('scroll')}>📜 Spell scroll</button>
         <button type="button" className={open === 'custom' ? 'on' : ''} onClick={() => setOpen('custom')}>Custom item</button>
       </div>
-      {open === 'potions' ? <ConsumablePicker onAdd={onAdd} /> : open === 'scroll' ? <ScrollPicker onAdd={onAdd} customSpells={customSpells} /> : open === 'quick' ? (
+      {open === 'potions' ? <ConsumablePicker onAdd={add} /> : open === 'scroll' ? <ScrollPicker onAdd={add} customSpells={customSpells} /> : open === 'quick' ? (
         <>
-          <button className="btn sm" onClick={() => onAdd(potionOfHealing())}>🧪 + Common Healing Potion (2d6+2) <small>10g</small></button>
+          <button className="btn sm" onClick={() => add(potionOfHealing())}>🧪 + Common Healing Potion (2d6+2) <small>10g</small></button>
           <div className="mini-label">Armor</div>
           <div className="chips-row wrap">{ARMOR_CATALOG.map((a) => <button key={a.id} className={'chip ' + (armorId === a.id ? 'on' : '')} onClick={() => setArmorId(a.id)}>{a.name}</button>)}</div>
           <div className="chips-row wrap">{TIERS.map((t) => <button key={t} className={'chip ' + (tier === t ? 'on' : '')} style={{ color: TIER_COLORS[t] }} onClick={() => setTier(t)}>◆ {TIER_SHORT[t]} <small>{armorPrice(armorId, t)}g</small></button>)}</div>
-          <button className="btn sm" onClick={() => onAdd(armorItem(armorId, tier))}>🛡 + {TIER_SHORT[tier]} {ARMOR_CATALOG.find((a) => a.id === armorId)?.name} Armor <small>{armorPrice(armorId, tier)}g</small></button>
+          <button className="btn sm" onClick={() => add(armorItem(armorId, tier))}>🛡 + {TIER_SHORT[tier]} {ARMOR_CATALOG.find((a) => a.id === armorId)?.name} Armor <small>{armorPrice(armorId, tier)}g</small></button>
           <div className="mini-label">Weapons</div>
-          <div className="chips-row wrap">{COMMON_WEAPONS.map((w) => <button key={w.name} className="chip" onClick={() => onAdd(weaponItem(w))}>+ {w.name} <small>{w.damage}</small></button>)}</div>
+          <div className="chips-row wrap">{COMMON_WEAPONS.map((w) => <button key={w.name} className="chip" onClick={() => add(weaponItem(w))}>+ {w.name} <small>{w.damage}</small></button>)}</div>
           <div className="mini-label">Homebrew (first pass)</div>
           <div className="chips-row wrap">
-            <button className="chip" onClick={() => onAdd(tieredWeapon('longsword', tier))}>+ {TIER_SHORT[tier]} Longsword</button>
-            <button className="chip" onClick={() => onAdd(tieredWeapon('greatsword', 'green'))}>+ Common Greatsword <small>2 slots</small></button>
-            <button className="chip" onClick={() => onAdd(accessoryItem('iron-cap'))}>+ Iron Cap</button>
-            <button className="chip" onClick={() => onAdd(accessoryItem('archer-gauntlets'))}>+ Archer’s Gauntlets</button>
-            <button className="chip" onClick={() => onAdd(accessoryItem('softstep-boots'))}>+ Softstep Boots</button>
-            <button className="chip" onClick={() => onAdd(materialItem('green', 2))}>+ 2 Green Material</button>
-            <button className="chip" onClick={() => onAdd(pinkLantern())}>+ Pink Lantern</button>
-            <button className="chip" onClick={() => onAdd(pinkCoin())}>+ Pink Coin</button>
-            <button className="chip" onClick={() => onAdd(whisperfang())}>+ Whisperfang</button>
+            <button className="chip" onClick={() => add(tieredWeapon('longsword', tier))}>+ {TIER_SHORT[tier]} Longsword</button>
+            <button className="chip" onClick={() => add(tieredWeapon('greatsword', 'green'))}>+ Common Greatsword <small>2 slots</small></button>
+            <button className="chip" onClick={() => add(accessoryItem('iron-cap'))}>+ Iron Cap</button>
+            <button className="chip" onClick={() => add(accessoryItem('archer-gauntlets'))}>+ Archer’s Gauntlets</button>
+            <button className="chip" onClick={() => add(accessoryItem('softstep-boots'))}>+ Softstep Boots</button>
+            <button className="chip" onClick={() => add(materialItem('green', 2))}>+ 2 Green Material</button>
+            <button className="chip" onClick={() => add(pinkLantern())}>+ Pink Lantern</button>
+            <button className="chip" onClick={() => add(pinkCoin())}>+ Pink Coin</button>
+            <button className="chip" onClick={() => add(whisperfang())}>+ Whisperfang</button>
           </div>
         </>
       ) : (
@@ -109,7 +111,7 @@ export function ItemPicker({ onAdd, customSpells = [] }: { onAdd: (it: Item) => 
           <textarea rows={2} placeholder="Description" value={custom.description} onChange={(e) => setCustom({ ...custom, description: e.target.value })} />
           <button className="btn sm primary" disabled={!custom.name.trim()} onClick={() => {
             const rarity = RARITY_OPTIONS.find((r) => r.id === custom.rarity) ?? RARITY_OPTIONS[0]
-            onAdd({ id: uid(), name: custom.name.trim(), kind: custom.kind, qty: custom.qty, description: custom.description,
+            add({ id: uid(), name: custom.name.trim(), kind: custom.kind, qty: custom.qty, description: custom.description,
               ...(rarity.special ? { special: rarity.special } : { tier: rarity.tier }),
               ...(custom.kind === 'weapon' ? { damage: custom.damage, damageType: custom.damageType } : {}),
               ...(custom.kind === 'consumable' && custom.heal.trim() ? { heal: custom.heal.trim() } : {}) })
