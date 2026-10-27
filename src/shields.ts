@@ -1,4 +1,4 @@
-// Small / medium / heavy shields. No art yet — cards keep the shield KIND_ICON.
+// Small / medium / heavy shields. Art is shield-{small|medium|heavy}.png (see itemArt.ts).
 // Durability uses the armor HP row for the shield’s category (small = light).
 import type { Item, ShieldMode } from './types'
 import { uid } from './types'
