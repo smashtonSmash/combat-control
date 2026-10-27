@@ -4,7 +4,7 @@ import { shopPriceSilver } from './catalog'
 import { applyTierKit, applyWeaponWear } from './effects'
 import { craftRepairKit, salvageItem } from './blacksmith'
 import { carryCapacity, itemSlots, slotsUsed } from './encumbrance'
-import { favorAdjust, favorFace, MERCHANTS, REFUSE_FAVOR, refusesToSell } from './favor'
+import { allMerchants, favorAdjust, favorFace, LAST_MERCHANT_WARNING, MERCHANTS, merchantFromTrade, REFUSE_FAVOR, refusesToSell, removeMerchant } from './favor'
 import { FOUNTAIN_THRESHOLDS, offerToFountain, pickThreshold } from './fountain'
 import { addItem, armorItem, equip, potionOfHealing } from './inventory'
 import { catalogItem, catalogToItem } from './catalog'
@@ -136,6 +136,40 @@ describe('favor discount', () => {
     expect(refusesToSell(-80)).toBe(true)
     expect(favorAdjust(-40, bram)).toBeGreaterThan(favorAdjust(0, bram))
     expect(shopPriceSilver(10, favorAdjust(100, bram))).toBeLessThan(shopPriceSilver(10, favorAdjust(0, bram)))
+  })
+  it('will not delete the last merchant, and will delete again once another is added', () => {
+    const ids = MERCHANTS.map((m) => m.id)
+    const kept = ids[ids.length - 1]
+    const removed = ids.slice(0, -1)
+    const blocked = removeMerchant([], removed, kept)
+    expect(blocked.ok).toBe(false)
+    if (!blocked.ok) expect(blocked.message).toBe(LAST_MERCHANT_WARNING)
+    expect(allMerchants([], removed).map((m) => m.id)).toEqual([kept])
+
+    const willa = merchantFromTrade('Willa', 'Baker', 'willa')
+    const opened = removeMerchant([willa], removed, kept)
+    expect(opened.ok).toBe(true)
+    if (opened.ok) {
+      expect(opened.removedMerchantIds).toContain(kept)
+      expect(allMerchants(opened.merchants, opened.removedMerchantIds).map((m) => m.id)).toEqual(['willa'])
+      expect(removeMerchant(opened.merchants, opened.removedMerchantIds, 'willa').ok).toBe(false)
+    }
+
+    const a = merchantFromTrade('Ada', 'Blacksmith', 'ada')
+    const b = merchantFromTrade('Bramble', 'Innkeeper', 'bramble')
+    const hide = MERCHANTS.map((m) => m.id)
+    const dropped = removeMerchant([a, b], hide, a.id)
+    expect(dropped.ok).toBe(true)
+    if (dropped.ok) {
+      expect(dropped.merchants.map((m) => m.id)).toEqual(['bramble'])
+      expect(dropped.removedMerchantIds).toEqual(hide)
+      expect(removeMerchant(dropped.merchants, dropped.removedMerchantIds, 'bramble').ok).toBe(false)
+    }
+  })
+  it('treats a saved roster with every merchant removed as empty', () => {
+    const removed = MERCHANTS.map((m) => m.id)
+    expect(allMerchants([], removed)).toEqual([])
+    expect(removeMerchant([], removed, 'mara').ok).toBe(false)
   })
 })
 

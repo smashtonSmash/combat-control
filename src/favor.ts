@@ -39,6 +39,21 @@ export const allMerchants = (extra?: Merchant[], removed: string[] = []) => {
   return [...MERCHANTS, ...(extra ?? [])].filter((m) => !hide.has(m.id))
 }
 
+export const LAST_MERCHANT_WARNING = 'You have to have at least one merchant.'
+
+/** Drop one merchant from the roster. Refuses when they are the last one left. */
+export function removeMerchant(extras: Merchant[] = [], removed: string[] = [], id: string):
+  | { ok: true; merchants: Merchant[]; removedMerchantIds: string[]; nextId: string }
+  | { ok: false; message: string } {
+  const list = allMerchants(extras, removed)
+  const target = list.find((m) => m.id === id)
+  if (!target || list.length <= 1) return { ok: false, message: LAST_MERCHANT_WARNING }
+  const merchants = target.custom ? extras.filter((m) => m.id !== target.id) : extras
+  const removedMerchantIds = target.custom ? removed : [...removed, target.id]
+  const left = allMerchants(merchants, removedMerchantIds)
+  return { ok: true, merchants, removedMerchantIds, nextId: left[0].id }
+}
+
 const TRADE_PRESET: Record<string, Pick<Merchant, 'style' | 'baseAdjust' | 'personality'>> = {
   Blacksmith: { style: 'greedy', baseAdjust: 10, personality: 'Hammers out a price and remembers a haggle.' },
   Baker: { style: 'friendly', baseAdjust: 0, personality: 'Flour-dusted, and happy to throw in a roll once they know you.' },
