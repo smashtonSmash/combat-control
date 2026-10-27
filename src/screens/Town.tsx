@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { Character } from '../types'
 import { uid } from '../types'
 import { currentPlace, defaultTown, fountainReward, goldLabelFromSilver, offerToFountain, type TownState } from '../fountain'
-import { FAVOR_MIN, FAVOR_MAX, MERCHANT_TRADES, allMerchants, favorAdjust, favorFace, favorOf, MERCHANTS, merchantById, merchantFromTrade, clampFavor, refusesToSell } from '../favor'
+import { FAVOR_MIN, FAVOR_MAX, MERCHANT_TRADES, allMerchants, favorAdjust, favorFace, favorOf, MERCHANTS, merchantById, merchantFromTrade, clampFavor, refusesToSell, removeMerchant } from '../favor'
 import { shopPriceSilver } from '../catalog'
 import { fmtCost } from '../effects'
 import { fromSilver, purseSilver } from '../party'
@@ -27,6 +27,7 @@ export default function Town({ characters, town, onTown, onSave, isDM, onRecap }
   const [gold, setGold] = useState(1)
   const [silver, setSilver] = useState(0)
   const [merchantId, setMerchantId] = useState(MERCHANTS[0].id)
+  const [merchantNote, setMerchantNote] = useState('')
   const [msg, setMsg] = useState('')
   const [townName, setTownName] = useState('')
   const [mName, setMName] = useState('')
@@ -38,10 +39,12 @@ export default function Town({ characters, town, onTown, onSave, isDM, onRecap }
   const extras = town.merchants ?? []
   const removed = town.removedMerchantIds ?? []
   const merchantList = allMerchants(extras, removed)
-  const merchant = merchantById(merchantId, extras) ?? merchantList[0]
-  const favor = c ? favorOf(c, merchant.id) : 0
+  const merchant = merchantList[0]
+    ? (merchantById(merchantId, extras, removed) ?? merchantList[0])
+    : undefined
+  const favor = c && merchant ? favorOf(c, merchant.id) : 0
   const face = favorFace(favor)
-  const adjust = favorAdjust(favor, merchant)
+  const adjust = merchant ? favorAdjust(favor, merchant) : 0
 
   const offer = () => {
     if (!c) return
@@ -63,7 +66,7 @@ export default function Town({ characters, town, onTown, onSave, isDM, onRecap }
   }
 
   const setFavor = (n: number) => {
-    if (!c) return
+    if (!c || !merchant) return
     const v = clampFavor(n)
     onSave({ ...c, favor: { ...c.favor, [merchant.id]: v } })
   }
@@ -73,8 +76,17 @@ export default function Town({ characters, town, onTown, onSave, isDM, onRecap }
     const m = merchantFromTrade(mName, label, uid())
     onTown({ ...town, merchants: [...extras, m] })
     setMerchantId(m.id)
+    setMerchantNote('')
     setMName('')
     setCustomTrade('')
+  }
+  const removeCurrent = () => {
+    if (!merchant) return
+    const result = removeMerchant(extras, removed, merchant.id)
+    if (!result.ok) { setMerchantNote(result.message); return }
+    setMerchantNote('')
+    onTown({ ...town, merchants: result.merchants, removedMerchantIds: result.removedMerchantIds })
+    setMerchantId(result.nextId)
   }
   const neg = favor < 0
   const pos = favor > 0
@@ -150,37 +162,38 @@ export default function Town({ characters, town, onTown, onSave, isDM, onRecap }
       </div>
 
       <div className="panel">
-        <div className="row between"><b>Merchants</b><span className="face" title={face.label}>{face.emoji} {face.label}</span></div>
+        <div className="row between"><b>Merchants</b>{merchant && <span className="face" title={face.label}>{face.emoji} {face.label}</span>}</div>
         <div className="small muted">Favor starts at 0 in the center. Left is colder, right is warmer. Low enough, they refuse to sell. Each merchant still haggles from their own markup. The percent math is a placeholder.</div>
-        <div className="chips-row wrap">{merchantList.map((m) => (
-          <button key={m.id} className={'chip ' + (m.id === merchant.id ? 'on' : '')} onClick={() => setMerchantId(m.id)}>{m.name}{m.trade ? <small> {m.trade}</small> : null}</button>
-        ))}</div>
-        <p className="small"><b>{merchant.name}</b>{merchant.trade ? ` · ${merchant.trade}` : ''} — {merchant.personality}</p>
-        {c && (
+        {merchantNote && <div className="inv-msg">{merchantNote}</div>}
+        {!merchant && <div className="empty">{isDM ? 'No merchants yet. Add one below.' : 'No merchants yet.'}</div>}
+        {merchant && (
           <>
-            <div className="favor-bar" aria-label={`Favor ${favor} from ${FAVOR_MIN} to ${FAVOR_MAX}`}>
-              <span className="favor-axis" />
-              {neg && <i className="neg" style={{ width: `${(Math.abs(favor) / span) * 100}%` }} />}
-              {pos && <i className="pos" style={{ width: `${(favor / span) * 100}%` }} />}
-              <em>{favor > 0 ? `+${favor}` : favor}</em>
-            </div>
-            <div className="favor-scale small muted"><span>{FAVOR_MIN}</span><span>0</span><span>+{FAVOR_MAX}</span></div>
-            {refusesToSell(favor)
-              ? <div className="small warn">{merchant.name} refuses to sell to {who}. Favor is too low.</div>
-              : <div className="small">A 10g item is {fmtCost(shopPriceSilver(10, adjust))} here ({adjust > 0 ? `+${adjust}%` : `${adjust}%`}).</div>}
-            {isDM && (
-              <div className="row">
-                <button className="btn sm" onClick={() => setFavor(favor - 5)}>− Favor</button>
-                <button className="btn sm" onClick={() => setFavor(favor + 5)}>+ Favor</button>
-                <button className="btn sm danger" onClick={() => {
-                  const nextExtras = merchant.custom ? extras.filter((m) => m.id !== merchant.id) : extras
-                  const nextRemoved = merchant.custom ? removed : [...removed, merchant.id]
-                  const left = allMerchants(nextExtras, nextRemoved)
-                  onTown({ ...town, merchants: nextExtras, removedMerchantIds: nextRemoved })
-                  setMerchantId(left[0]?.id ?? '')
-                }}>Remove</button>
-              </div>
+            <div className="chips-row wrap">{merchantList.map((m) => (
+              <button key={m.id} className={'chip ' + (m.id === merchant.id ? 'on' : '')} onClick={() => { setMerchantId(m.id); setMerchantNote('') }}>{m.name}{m.trade ? <small> {m.trade}</small> : null}</button>
+            ))}</div>
+            <p className="small"><b>{merchant.name}</b>{merchant.trade ? ` · ${merchant.trade}` : ''} — {merchant.personality}</p>
+            {c && (
+              <>
+                <div className="favor-bar" aria-label={`Favor ${favor} from ${FAVOR_MIN} to ${FAVOR_MAX}`}>
+                  <span className="favor-axis" />
+                  {neg && <i className="neg" style={{ width: `${(Math.abs(favor) / span) * 100}%` }} />}
+                  {pos && <i className="pos" style={{ width: `${(favor / span) * 100}%` }} />}
+                  <em>{favor > 0 ? `+${favor}` : favor}</em>
+                </div>
+                <div className="favor-scale small muted"><span>{FAVOR_MIN}</span><span>0</span><span>+{FAVOR_MAX}</span></div>
+                {refusesToSell(favor)
+                  ? <div className="small warn">{merchant.name} refuses to sell to {who}. Favor is too low.</div>
+                  : <div className="small">A 10g item is {fmtCost(shopPriceSilver(10, adjust))} here ({adjust > 0 ? `+${adjust}%` : `${adjust}%`}).</div>}
+                {isDM && (
+                  <div className="row">
+                    <button className="btn sm" onClick={() => setFavor(favor - 5)}>− Favor</button>
+                    <button className="btn sm" onClick={() => setFavor(favor + 5)}>+ Favor</button>
+                    <button className="btn sm danger" onClick={removeCurrent}>Remove</button>
+                  </div>
+                )}
+              </>
             )}
+            {!c && <div className="small muted">Add a character to track favor.</div>}
           </>
         )}
         {isDM && (
@@ -196,7 +209,6 @@ export default function Town({ characters, town, onTown, onSave, isDM, onRecap }
             <button className="btn sm" disabled={!mName.trim() || (trade === 'Custom' && !customTrade.trim())} onClick={addMerchant}>Add merchant</button>
           </div>
         )}
-        {!c && <div className="small muted">Add a character to track favor.</div>}
       </div>
 
       {isDM && <ShopForge characters={characters} merchants={extras} removedMerchantIds={removed} onSave={onSave} onRecap={onRecap} />}
