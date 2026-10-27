@@ -20,14 +20,15 @@ import { WhoName } from './PlayerName'
 type ShopWhat = 'potions' | 'armor' | 'weapons' | 'shields' | 'kits'
 
 /** DM-run Shop (catalog) and Blacksmith (repair, 3→1 upgrade, craft, merge, salvage). */
-export function ShopForge({ characters, onSave, onRecap, merchants = [], removedMerchantIds = [] }: {
+export function ShopForge({ characters, onSave, onRecap, merchants = [], removedMerchantIds = [], isDM = true }: {
   characters: Character[]
   onSave: (c: Character) => void
   onRecap?: (kind: RecapKind, text: string) => void
   merchants?: Merchant[]
   removedMerchantIds?: string[]
+  isDM?: boolean
 }) {
-  const [tab, setTab] = useState<'shop' | 'forge'>('shop')
+  const [tab, setTab] = useState<'shop' | 'forge'>(isDM ? 'shop' : 'forge')
   const [charId, setCharId] = useState(characters[0]?.id ?? '')
   const [adjust, setAdjust] = useState(0)
   const [what, setWhat] = useState<ShopWhat>('potions')
@@ -39,6 +40,11 @@ export function ShopForge({ characters, onSave, onRecap, merchants = [], removed
   const c = characters.find((x) => x.id === charId) ?? characters[0]
   const merchantList = allMerchants(merchants, removedMerchantIds)
   const merchant = merchantById(merchantId, merchants, removedMerchantIds)
+  useEffect(() => {
+    if (isDM || !c) return
+    if (!merchant) { setAdjust(0); return }
+    setAdjust(favorAdjust(favorOf(c, merchant.id), merchant))
+  }, [isDM, c, merchant])
   const sell = (item: Item, gold: number) => {
     if (!c) return
     if (merchant && refusesToSell(favorOf(c, merchant.id))) {
@@ -57,10 +63,17 @@ export function ShopForge({ characters, onSave, onRecap, merchants = [], removed
     onSave(next)
     onRecap?.('spend', r.message)
   }
-  if (!characters.length || !c) return null
+  if (!characters.length || !c) {
+    return (
+      <div className="panel shopforge" id="shop-forge">
+        <div className="row between"><b>🔨 Blacksmith</b><span className="small muted">{isDM ? 'Town · DM' : 'Town'}</span></div>
+        <div className="small muted">The blacksmith is here. Add a character to repair, fuse, or buy from the merchants.</div>
+      </div>
+    )
+  }
   return (
     <div className="panel shopforge" id="shop-forge">
-      <div className="row between"><b>🏪 Shop & Forge</b><span className="small muted">Town · DM</span></div>
+      <div className="row between"><b>🏪 Shop & Forge</b><span className="small muted">{isDM ? 'Town · DM' : 'Town'}</span></div>
       <Segmented value={tab} onChange={(v) => { setTab(v); setMsg('') }} options={[{ value: 'shop', label: '🛒 Shop' }, { value: 'forge', label: '🔨 Blacksmith' }]} />
       <div className="chips-row wrap">{characters.map((x) => (
         <button key={x.id} className={'chip ' + (x.id === c.id ? 'on' : '')} onClick={() => { setCharId(x.id); setMsg('') }}><WhoName id={x.id} name={x.name} /> <small>{x.purse?.gold ?? 0}g {x.purse?.silver ?? 0}s</small></button>
@@ -68,7 +81,8 @@ export function ShopForge({ characters, onSave, onRecap, merchants = [], removed
       {msg && <div className="inv-msg">{msg}</div>}
       {tab === 'shop' && (
         <>
-          <Stepper label="Price adjust %" value={adjust} min={-90} max={300} step={5} onChange={setAdjust} />
+          {isDM && <Stepper label="Price adjust %" value={adjust} min={-90} max={300} step={5} onChange={setAdjust} />}
+          {!isDM && <div className="small muted">Prices follow the merchant you pick. The DM sets anything past that.</div>}
           <div className="chips-row wrap">
             <button className={'chip ' + (!merchantId ? 'on' : '')} onClick={() => setMerchantId('')}>List price</button>
             {merchantList.map((m) => {
@@ -77,7 +91,7 @@ export function ShopForge({ characters, onSave, onRecap, merchants = [], removed
               return <button key={m.id} className={'chip ' + (merchantId === m.id ? 'on' : '')} onClick={() => setMerchantId(m.id)}>{face.emoji} {m.name} <small>{f}</small></button>
             })}
           </div>
-          {merchant && <div className="small">{merchant.personality} Suggests {favorAdjust(favorOf(c, merchant.id), merchant)}%. <button className="link" onClick={() => setAdjust(favorAdjust(favorOf(c, merchant.id), merchant))}>Use that discount</button></div>}
+          {merchant && <div className="small">{merchant.personality} Suggests {favorAdjust(favorOf(c, merchant.id), merchant)}%.{isDM && <> <button className="link" onClick={() => setAdjust(favorAdjust(favorOf(c, merchant.id), merchant))}>Use that discount</button></>}</div>}
           <Segmented value={what} onChange={setWhat} options={[
             { value: 'potions', label: '🧪 Potions' },
             { value: 'armor', label: '🛡 Armor' },
@@ -146,18 +160,19 @@ export function ShopForge({ characters, onSave, onRecap, merchants = [], removed
           )}
         </>
       )}
-      {tab === 'forge' && <Blacksmith c={c} onSave={onSave} onRecap={onRecap} onMsg={setMsg} />}
+      {tab === 'forge' && <Blacksmith c={c} onSave={onSave} onRecap={onRecap} onMsg={setMsg} dm={isDM} />}
     </div>
   )
 }
 
 type SlotId = 'repair' | 'salvage' | 'u0' | 'u1' | 'u2' | 'c0' | 'c1' | 'c2' | 'c3' | 'g0' | 'g1' | 'g2'
 
-function Blacksmith({ c, onSave, onRecap, onMsg }: {
+function Blacksmith({ c, onSave, onRecap, onMsg, dm }: {
   c: Character
   onSave: (c: Character) => void
   onRecap?: (kind: RecapKind, text: string) => void
   onMsg: (s: string) => void
+  dm: boolean
 }) {
   const [slots, setSlots] = useState<Partial<Record<SlotId, string>>>({})
   const [picked, setPicked] = useState<string | null>(null)
@@ -364,7 +379,7 @@ function Blacksmith({ c, onSave, onRecap, onMsg }: {
       {atForge.length > 0 && <h4 className="forge-h">At the forge</h4>}
       {atForge.map((i) => (
         <div key={i.id} className="fuse-row"><span>🔥 {i.name}</span>
-          <button className="btn sm" onClick={() => { onSave(forgeReady(c, i.id)); onMsg(`✅ ${i.name} is ready.`) }}>Ready</button></div>
+          {dm && <button className="btn sm" onClick={() => { onSave(forgeReady(c, i.id)); onMsg(`✅ ${i.name} is ready.`) }}>Ready</button>}</div>
       ))}
       <div className="small muted">Mat colors: {MAT_TIERS.map((t) => <b key={t} style={{ color: MAT_COLORS[t] }}>{MAT_LABELS[t]} </b>)}. Craft gold is {TIERS.map((t) => `${TIER_SHORT[t]} ${CRAFT_GOLD[t]}g`).join(', ')}.</div>
     </div>

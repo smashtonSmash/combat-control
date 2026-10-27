@@ -40,7 +40,7 @@ describe('item art', () => {
     expect(file(itemArtSrc(tieredWeapon('greatsword', 'blue')))).toBe('weapon-greatsword.png')
     expect(file(itemArtSrc(tieredWeapon('dagger', 'legendary')))).toBe('weapon-dagger-up.png')
     expect(file(itemArtSrc(tieredWeapon('shortbow', 'mythic')))).toBe('weapon-shortbow-up.png')
-    expect(file(itemArtSrc({ ...tieredWeapon('dagger', 'green'), name: 'Goblin Shiv' }))).toBe('weapon-dagger.png')
+    expect(file(itemArtSrc({ ...tieredWeapon('dagger', 'green'), name: 'Notched Blade' }))).toBe('weapon-dagger.png')
 
     const dagger = weaponItem(COMMON_WEAPONS.find((w) => w.name === 'Dagger')!)
     expect(file(itemArtSrc(dagger))).toBe('weapon-dagger.png')
@@ -113,7 +113,7 @@ describe('item art', () => {
 
   it('does not invent art for unknown ids or misc gear with no picture', () => {
     expect(itemArtSrc({ name: 'Stick', kind: 'weapon' })).toBeNull()
-    expect(itemArtSrc({ name: 'Dagger', kind: 'weapon', weaponId: 'goblin-shiv' })).toBeNull()
+    expect(itemArtSrc({ name: 'Dagger', kind: 'weapon', weaponId: 'unknown-shiv' })).toBeNull()
     expect(itemArtSrc({ name: 'Plate', kind: 'armor', armorId: 'mythril', tier: 'green' })).toBeNull()
     expect(itemArtSrc({ name: 'Rope', kind: 'misc' })).toBeNull()
   })

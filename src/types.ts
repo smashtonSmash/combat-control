@@ -180,6 +180,8 @@ export interface Character extends ArmorFields {
   inspiration?: number
   /** Timestamp of the last pip the DM gave. The player view plays the orb off this. */
   inspirationPing?: number
+  /** Checklist left over from the last level-up (ASI, feat, new spells). */
+  levelTasks?: { level: number; asi?: boolean; feat?: boolean; spells?: boolean }
 }
 
 export interface ItemTrade {

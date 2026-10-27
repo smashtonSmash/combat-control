@@ -51,7 +51,7 @@ export default function Rules({ recap, onClearRecap }: { recap: RecapEvent[]; on
       <section className="panel">
         <h3>Salvage & materials</h3>
         <ul className="rules-list">
-          <li>Materials are generic: {MAT_TIERS.map((t) => MAT_LABELS[t]).join(' → ')}. Legendary gear is orange. Mythic gear is red. Old typed parts (wolf pelt, goblin rag, and the rest) still count as the matching generic tier.</li>
+          <li>Materials are generic: {MAT_TIERS.map((t) => MAT_LABELS[t]).join(' → ')}. Legendary gear is orange. Mythic gear is red. Old typed parts still count as the matching generic tier.</li>
           <li>Broken (0): 1 mat of the item’s tier. From 1% through {SALVAGE_RICH_ABOVE * 100}%: 2 mats of that tier. Above that: those 2, plus 2 of the tier below (green’s below is gray).</li>
           <li>Armor, weapons, and shields all salvage this way. Pink and black named gear do not.</li>
         </ul>
@@ -70,7 +70,10 @@ export default function Rules({ recap, onClearRecap }: { recap: RecapEvent[]; on
           <li><b>Merchants.</b> {MERCHANTS.map((m) => `${m.name} (${m.style}, starts at ${m.baseAdjust > 0 ? '+' : ''}${m.baseAdjust}%)`).join('; ')}. Favor runs {FAVOR_MIN} to +{FAVOR_MAX} and starts at 0 in the center. PLACEHOLDER: every 5 favor removes 1% from that markup. At {REFUSE_FAVOR} or lower they refuse to sell. The DM can add a merchant by name and trade.</li>
           <li><b>Loot.</b> On a kill, roll the monster’s tier pie: {TIERS.filter((t) => t !== 'mythic').map((t) => `${TIER_LABELS[t]} ${Math.round(MONSTER_PIES[t].drop * 100)}%`).join('; ')}. Mythic always drops one legendary piece and has a 50% chance of an extra mythic piece. Gear is the weapon they hold or fitting armor (light splits padded / leather / studded). Pink and black are not on the tables. Roll it from the Battle tab with <b>Roll loot</b>. Nothing drops just because HP hits 0.</li>
           <li><b>Inspiration.</b> {INSPIRATION_SLOTS} slots. The DM gives one from Town (or the character sheet). The player view plays a white orb. Spending a pip is the table’s call — the sheet only clears the slot.</li>
-          <li><b>Blacksmith.</b> Lives on the Town tab with the shop. Repair, upgrade 3→1, craft, merge, and salvage. Example merchants can be removed.</li>
+          <li><b>Blacksmith.</b> Lives on the Town tab with the shop, for the DM and for players. Repair, upgrade 3→1, craft, merge, and salvage. A 3→1 fuse keeps the lowest current HP of the three pieces. Example merchants can be removed. Players see merchants the DM added. Add, remove, and favor buttons stay with the DM.</li>
+          <li><b>Gold.</b> Players can spend. Only the DM uses Add Gold. Loot and a town sale still put coin in the purse.</li>
+          <li><b>Level up.</b> A player levels their own character. The DM can level one character or all of them. Hit die: roll here, type a table roll, or take the fixed average (d8 → 5). Then a short checklist for an ASI, a feat, or new spells when that level grants them.</li>
+          <li><b>Vault.</b> Town tab. One shared bank in every town, 10 slots to start. +5 slots costs 1g, then 2, 4, 8, 16, and keeps doubling.</li>
           <li><b>Party stash.</b> DM toggle. Shared coins and a shared pack, plus person-to-person coin gifts.</li>
           <li><b>Player names.</b> Sheets show “Character (Player)” when we know who is playing. Signed in, that is the campaign member’s display name. Offline, the DM can type an optional player name. Blank stays blank.</li>
           <li><b>Fountain.</b> Towns only, and only when that town’s flag is on. Secret threshold is a fresh pick from {FOUNTAIN_THRESHOLDS.join(', ')} gold. The prize is <b>PLACEHOLDER (TBD)</b>.</li>

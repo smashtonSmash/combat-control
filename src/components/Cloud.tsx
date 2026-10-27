@@ -29,7 +29,7 @@ export function CloudSheet({ session, campaigns, activeId, members, onSelect, on
         <TextField label="Email" value={email} onChange={setEmail} placeholder="you@example.com" />
         <label className="field"><span>Password (6+ characters)</span>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" /></label>
-        <TextField label="Your name (for new accounts)" value={name} onChange={setName} placeholder="Ashton" />
+        <TextField label="Your name (for new accounts)" value={name} onChange={setName} placeholder="what is your name" />
         <div className="row">
           <button className="btn primary grow" disabled={busy || !email || password.length < 6} onClick={() => run(async () => {
             const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })

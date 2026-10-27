@@ -2,6 +2,15 @@ import { SILVER_PER_GOLD } from './casino/money'
 
 export interface Pouch { id: string; gold: number; silver: number }
 export const coinsToSilver = (g: number, s: number) => g * SILVER_PER_GOLD + s
+
+/** Example labels that were never real drops. "goblin" and "goblin something" were stubs. */
+const STUB_DROP_NAME = /^(goblin|goblin something)$/i
+export function isStubDropName(name: string): boolean {
+  return STUB_DROP_NAME.test(name.trim())
+}
+export function withoutStubDrops<T extends { name: string }>(items: T[]): T[] {
+  return items.filter((i) => !isStubDropName(i.name))
+}
 export const silverToCoins = (t: number) => ({ gold: Math.floor(t / SILVER_PER_GOLD), silver: t % SILVER_PER_GOLD })
 
 /** Take g/s out of a pile, making change from gold if silver runs short. Returns null if it can't. */

@@ -1,6 +1,7 @@
 // Town wishing fountain. The accepting threshold is rolled from a short list and kept off the main UI.
 import type { Merchant } from './favor'
 import type { Item } from './types'
+import type { VaultState } from './vault'
 import { uid } from './types'
 
 export const FOUNTAIN_THRESHOLDS = [10, 50, 100, 200] as const
@@ -22,6 +23,10 @@ export interface TownState {
   merchants?: Merchant[]
   /** Built-in example merchant ids the DM removed. Custom merchants are dropped from `merchants` instead. */
   removedMerchantIds?: string[]
+  /** Shared bank. It does not reset when the party changes towns. */
+  vault?: VaultState
+  /** Bumped on every vault change so a stale town save does not wipe a newer deposit. */
+  vaultRev?: number
 }
 
 export function defaultTown(): TownState {

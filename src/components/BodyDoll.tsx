@@ -1,7 +1,18 @@
+import type { CSSProperties } from 'react'
 import type { Character, Item } from '../types'
 import { itemRarity } from '../armor'
 import { weaponStyle } from '../weapons'
 import { carryCapacity, slotsUsed } from '../encumbrance'
+
+function partTint(item?: Item): CSSProperties | undefined {
+  if (!item) return
+  const rarity = itemRarity(item)
+  if (!rarity) return
+  if (item.special === 'black') {
+    return { background: '#141416', borderColor: '#f3f3f6', boxShadow: '0 0 10px #f3f3f6' }
+  }
+  return { background: rarity.color, borderColor: rarity.color, boxShadow: `0 0 10px ${rarity.color}` }
+}
 
 function Slot({ label, hint, item, onPick }: { label: string; hint: string; item?: Item; onPick?: (id: string) => void }) {
   const rarity = item ? itemRarity(item) : null
@@ -21,13 +32,17 @@ export function BodyDoll({ c, onPick }: { c: Character; onPick?: (itemId: string
   const eq = (pred: (i: Item) => boolean) => inv.find((i) => i.equipped && pred(i))
   const used = slotsUsed(inv)
   const cap = carryCapacity(c)
+  const head = eq((i) => i.equipSlot === 'head')
+  const chest = eq((i) => i.kind === 'armor')
+  const hands = eq((i) => i.equipSlot === 'hands')
+  const feet = eq((i) => i.equipSlot === 'feet')
   return (
     <div className="doll">
       <div className="doll-figure" aria-hidden="true">
-        <i className="doll-head" />
-        <i className="doll-body" />
-        <i className="doll-arm l" /><i className="doll-arm r" />
-        <i className="doll-leg l" /><i className="doll-leg r" />
+        <i className={'doll-head' + (head ? ' tinted' : '')} style={partTint(head)} />
+        <i className={'doll-body' + (chest ? ' tinted' : '')} style={partTint(chest)} />
+        <i className={'doll-arm l' + (hands ? ' tinted' : '')} style={partTint(hands)} /><i className={'doll-arm r' + (hands ? ' tinted' : '')} style={partTint(hands)} />
+        <i className={'doll-leg l' + (feet ? ' tinted' : '')} style={partTint(feet)} /><i className={'doll-leg r' + (feet ? ' tinted' : '')} style={partTint(feet)} />
       </div>
       <div className="doll-slots">
         <Slot label="Melee" hint="Empty" item={eq((i) => i.kind === 'weapon' && weaponStyle(i) === 'melee')} onPick={onPick} />

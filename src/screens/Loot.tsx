@@ -6,7 +6,7 @@ import { ItemArt, ItemCard, ItemPicker } from '../components/Items'
 import { POUCH_ART_SRC } from '../itemArt'
 import { Sheet, Stepper } from '../components/Sheet'
 import { fmtCoins, purseTotal } from '../casino/money'
-import { coinsToSilver, splitEvenly, takeFrom } from '../loot'
+import { coinsToSilver, splitEvenly, takeFrom, withoutStubDrops } from '../loot'
 import { WhoName, usePlayerDirectory } from '../components/PlayerName'
 import { withPlayer } from '../playerLabel'
 
@@ -190,7 +190,7 @@ export default function Loot({ chests, saveChest, deleteChest, characters, onGiv
         <div className="panel">
           <div className="row between"><b>Battle drops</b><button className="link small" onClick={() => onPendingLoot?.([])}>Clear</button></div>
           <div className="small muted">Filed from Battle → Roll loot, if you held them instead of sending them straight to a chest.</div>
-          {pendingLoot.map((it) => (
+          {withoutStubDrops(pendingLoot).map((it) => (
             <div key={it.id} className="fuse-row"><span>{it.name}</span>
               {chest && <button className="btn sm" onClick={() => { saveChest({ ...chest, items: [...chest.items, it], updated: Date.now() }); onPendingLoot?.(pendingLoot.filter((x) => x.id !== it.id)) }}>Into {chest.name}</button>}
             </div>
