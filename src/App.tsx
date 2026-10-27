@@ -499,7 +499,7 @@ export default function App() {
       {online && cloud.error && <div className="live-banner" style={{ borderColor: '#a83a28', background: '#2a1210' }}>⚠ Sync problem: {cloud.error} <button className="link" onClick={() => cloud.setError('')}>dismiss</button></div>}
       <PlayerNames value={players}>
       <main key={tab} className="fade-in">
-        {tab === 'battle' && <Battle encounter={encounter} setEncounter={setEnc} characters={characters} onSpendSlot={spendCharSlot} onUseScroll={useScroll} onRest={restAll} onUpdateChar={saveCharacter} portraits={Object.fromEntries(allChars.map((c) => [c.id, c.portrait]))} onRecap={note} onRouteLoot={routeLoot} />}
+        {tab === 'battle' && <Battle encounter={encounter} setEncounter={setEnc} characters={characters} onSpendSlot={spendCharSlot} onUseScroll={useScroll} onRest={restAll} onUpdateChar={saveCharacter} portraits={Object.fromEntries(allChars.map((c) => [c.id, c.portrait]))} onRecap={note} onRouteLoot={routeLoot} readOnly={online && !isDM} />}
         {tab === 'characters' && (
           <>
             <Characters characters={characters} onSave={saveCharacter} onDelete={deleteCharacter} giveTargets={allChars.map((c) => ({ id: c.id, name: c.name }))} onGive={giveBetween} customBudget={customBudget} onBudget={setBudget} allowReroll={allowReroll} onAllowReroll={setAllowReroll} party={party} onParty={saveParty} canToggleParty={!online || isDM} onTransfer={transferCoins} onRecap={note} isDM={!online || isDM} library={library} onSaveOrigin={saveOrigin} roster={allChars} onAcceptTrade={acceptOffer} onDeclineTrade={declineOffer} />

@@ -1,27 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
+import { observeInspiration } from '../inspiration'
 import type { Character } from '../types'
 
-/** White orb + firework when a character's inspirationPing moves forward. Old pings do not replay on load. */
+/** White orb + firework when inspiration is newly granted. Saved pings do not replay on load. */
 export function InspirationShow({ characters }: { characters: Character[] }) {
   const seen = useRef<Map<string, number>>(new Map())
-  const primed = useRef(false)
   const [burst, setBurst] = useState<{ name: string; key: number } | null>(null)
 
   useEffect(() => {
-    if (!primed.current) {
-      for (const c of characters) if (c.inspirationPing) seen.current.set(c.id, c.inspirationPing)
-      primed.current = true
-      return
-    }
-    for (const c of characters) {
-      const ping = c.inspirationPing
-      if (!ping) continue
-      const prev = seen.current.get(c.id) ?? 0
-      if (ping > prev) {
-        seen.current.set(c.id, ping)
-        setBurst({ name: c.name || 'Someone', key: ping })
-      }
-    }
+    const next = observeInspiration(seen.current, characters)
+    seen.current = next.seen
+    if (next.burst) setBurst(next.burst)
   }, [characters])
 
   useEffect(() => {

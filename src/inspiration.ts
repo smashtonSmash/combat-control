@@ -20,6 +20,33 @@ export function giveInspiration(c: Character, now = Date.now()): { char: Charact
   }
 }
 
+/**
+ * Pings already on a character the first time we see them are persisted grants
+ * (cold load, refresh, cloud rehydration). Only a later, higher ping is a new grant.
+ * A global "primed" flag is wrong: the first effect often runs on an empty list,
+ * then saved characters arrive and look brand new.
+ */
+export function observeInspiration(
+  seen: ReadonlyMap<string, number>,
+  characters: { id: string; name?: string; inspirationPing?: number }[],
+): { seen: Map<string, number>; burst: { name: string; key: number } | null } {
+  const next = new Map(seen)
+  let burst: { name: string; key: number } | null = null
+  for (const c of characters) {
+    const ping = c.inspirationPing && c.inspirationPing > 0 ? c.inspirationPing : 0
+    const prev = next.get(c.id)
+    if (prev === undefined) {
+      next.set(c.id, ping)
+      continue
+    }
+    if (ping > prev) {
+      next.set(c.id, ping)
+      burst = { name: c.name?.trim() || 'Someone', key: ping }
+    }
+  }
+  return { seen: next, burst }
+}
+
 /** Spend one pip. The benefit is still the table’s call — this only clears the slot. */
 export function spendInspiration(c: Character): { char: Character; ok: boolean; message: string } {
   const cur = inspirationOf(c)

@@ -1,17 +1,22 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { lockPageScroll } from '../scrollLock'
 
 export function Sheet({ open, onClose, title, children, footer, tall }: {
   open: boolean; onClose: () => void; title?: ReactNode; children: ReactNode; footer?: ReactNode; tall?: boolean
 }) {
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
   useEffect(() => {
     if (!open) return
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    // One shared lock. Saving this sheet's previous overflow and writing it back
+    // left the page at overflow:hidden when a second sheet (level up) was open
+    // during a parent re-render — the character list could not scroll afterward.
+    const release = lockPageScroll()
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeRef.current() }
     window.addEventListener('keydown', onKey)
-    return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', onKey) }
-  }, [open, onClose])
+    return () => { release(); window.removeEventListener('keydown', onKey) }
+  }, [open])
   if (!open) return null
   return createPortal(
     <div className="sheet-backdrop" onClick={onClose}>

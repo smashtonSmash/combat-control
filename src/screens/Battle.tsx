@@ -25,12 +25,12 @@ import { withPlayer } from '../playerLabel'
 
 type SetEnc = (f: (e: Encounter) => Encounter) => void
 
-interface Props { encounter: Encounter; setEncounter: SetEnc; characters: Character[]; onSpendSlot?: (charId: string, level: number) => void; onUseScroll?: (charId: string, itemId: string) => void; onRest?: (kind: 'long' | 'short') => void; portraits?: Record<string, string | undefined>; onUpdateChar?: (c: Character) => void; onRecap?: (kind: RecapKind, text: string) => void; onDrops?: (items: Item[], source: string) => void; onRouteLoot?: (items: Item[], target: { kind: 'chest' } | { kind: 'player'; charId: string }) => void }
+interface Props { encounter: Encounter; setEncounter: SetEnc; characters: Character[]; onSpendSlot?: (charId: string, level: number) => void; onUseScroll?: (charId: string, itemId: string) => void; onRest?: (kind: 'long' | 'short') => void; portraits?: Record<string, string | undefined>; onUpdateChar?: (c: Character) => void; onRecap?: (kind: RecapKind, text: string) => void; onDrops?: (items: Item[], source: string) => void; onRouteLoot?: (items: Item[], target: { kind: 'chest' } | { kind: 'player'; charId: string }) => void; readOnly?: boolean }
 
 const log = (e: Encounter, text: string, kind: LogEntry['kind']): LogEntry[] =>
   [{ id: uid(), round: e.round, text, kind, time: Date.now() }, ...e.log].slice(0, 200)
 
-export default function Battle({ encounter, setEncounter, characters, onSpendSlot, onUseScroll, onRest, portraits = {}, onUpdateChar, onRecap, onRouteLoot }: Props) {
+export default function Battle({ encounter, setEncounter, characters, onSpendSlot, onUseScroll, onRest, portraits = {}, onUpdateChar, onRecap, onRouteLoot, readOnly = false }: Props) {
   const dir = usePlayerDirectory()
   const played = (c: { name: string; characterId?: string }) => withPlayer(c.name, c.characterId ? dir.label[c.characterId] : undefined)
   const charOf = (cb?: Combatant) => (cb?.characterId ? characters.find((x) => x.id === cb.characterId) : undefined)
@@ -48,16 +48,42 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
   const [addSide, setAddSide] = useState<Side | null>(null)
   const [initOpen, setInitOpen] = useState(false)
   const [logOpen, setLogOpen] = useState(true)
-  const [lootRoll, setLootRoll] = useState<{ name: string; items: Item[]; text: string } | null>(null)
+  const [lootRoll, setLootRoll] = useState<{ source: 'board' | 'quick'; name: string; items: Item[]; text: string } | null>(null)
+  const describeRoll = (who: string, tier: Tier, items: Item[]) => {
+    const chance = tier === 'mythic' ? 100 : Math.round(MONSTER_PIES[tier].drop * 100)
+    return items.length
+      ? `${who}: ${items.map((i) => i.name).join(', ')}.`
+      : `${who}: nothing this time (${TIER_LABELS[tier]} table, ${chance}% drop).`
+  }
   const rollFor = (m: Combatant) => {
     const tier = m.lootTier ?? suggestMonsterTier(m.name)
     const found = withoutStubDrops(rollMonsterLoot(tier, inferLoadout(m)))
-    const chance = tier === 'mythic' ? 100 : Math.round(MONSTER_PIES[tier].drop * 100)
-    const text = found.length
-      ? `${m.name}: ${found.map((i) => i.name).join(', ')}.`
-      : `${m.name}: nothing this time (${TIER_LABELS[tier]} table, ${chance}% drop).`
-    setLootRoll({ name: m.name, items: found, text })
+    const text = describeRoll(m.name, tier, found)
+    setLootRoll({ source: 'board', name: m.name, items: found, text })
     onRecap?.('drop', text)
+  }
+  const rollTier = (tier: Tier) => {
+    const found = withoutStubDrops(rollMonsterLoot(tier, inferLoadout({})))
+    const text = describeRoll(TIER_LABELS[tier], tier, found)
+    setLootRoll({ source: 'quick', name: TIER_LABELS[tier], items: found, text })
+    onRecap?.('drop', text)
+  }
+  const removeCombatant = (c: Combatant) => {
+    if (!confirm(`Remove ${c.name} from this battle?`)) return
+    setEncounter((e) => ({
+      ...e,
+      combatants: e.combatants.filter((x) => x.id !== c.id),
+      turnId: e.turnId === c.id ? null : e.turnId,
+    }))
+    if (selected === c.id) setSelected(null)
+  }
+  const clearMonsters = () => {
+    if (!monsters.length || !confirm('Remove all monsters from this battle?')) return
+    setEncounter((e) => {
+      const cs = e.combatants.filter((c) => c.side !== 'monster')
+      return { ...e, combatants: cs, turnId: cs.some((c) => c.id === e.turnId) ? e.turnId : null }
+    })
+    setSelected((id) => (id && monsters.some((m) => m.id === id) ? null : id))
   }
   const [flash, setFlash] = useState<{ id: string; text: string; kind: string; key: number } | null>(null)
 
@@ -248,7 +274,8 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
       onHandleDown={(e) => { e.stopPropagation(); startDrag(e, c.id, true) }}
       onTap={() => tapCard(c.id)}
       onHp={() => setHpFor(c.id)}
-      onMenu={() => setEditFor(c.id)} />
+      onMenu={() => setEditFor(c.id)}
+      onRemove={!readOnly && c.side === 'monster' ? () => removeCombatant(c) : undefined} />
   )
 
   return (
@@ -287,6 +314,7 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
         </section>
         <section className="col">
           <header className="col-head monster"><span>👹 Monsters</span><button className="icon-btn sm" onClick={() => setAddSide('monster')} aria-label="Add monster">＋</button></header>
+          {!readOnly && monsters.length > 0 && <button className="btn sm danger" onClick={clearMonsters}>Clear all monsters</button>}
           {monsters.map(card)}
           {!monsters.length && <div className="empty">Tap ＋ to add monsters</div>}
         </section>
@@ -307,20 +335,7 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
             <button className="btn sm" onClick={() => rollFor(m)}>Roll loot</button>
           </div>
         ))}
-        {lootRoll && (
-          <div className={'loot-result ' + (lootRoll.items.length ? 'hit' : 'miss')}>
-            <b>{lootRoll.items.length ? 'Hit' : 'Miss'}</b>
-            <div className="small">{lootRoll.text}</div>
-            {lootRoll.items.length > 0 && (
-              <div className="row wrap">
-                <button className="btn sm" onClick={() => { onRouteLoot?.(lootRoll.items, { kind: 'chest' }); setLootRoll(null) }}>Into chest</button>
-                {characters.map((c) => (
-                  <button key={c.id} className="btn sm" onClick={() => { lootRoll.items.forEach((it) => onRouteLoot?.([it], { kind: 'player', charId: c.id })); setLootRoll(null) }}>Give to <WhoName id={c.id} name={c.name} /></button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+        {lootRoll?.source === 'board' && <LootOutcome roll={lootRoll} characters={characters} onRouteLoot={onRouteLoot} onClear={() => setLootRoll(null)} />}
       </section>
 
       <section className="log">
@@ -334,6 +349,21 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
           </ul>
         )}
       </section>
+
+      {!readOnly && (
+        <section className="panel" aria-label="Quick monster rolls">
+          <div className="row between"><b>Quick monster roll</b><span className="small muted">Not on the board</span></div>
+          <p className="small muted">A small fight you don’t want to place. Same tables as Roll loot.</p>
+          <div className="quick-roll-row">
+            {TIERS.map((t) => (
+              <button key={t} type="button" className="btn sm quick-roll" style={{ borderColor: TIER_COLORS[t], color: TIER_COLORS[t] }} onClick={() => rollTier(t)}>
+                {TIER_LABELS[t]}
+              </button>
+            ))}
+          </div>
+          {lootRoll?.source === 'quick' && <LootOutcome roll={lootRoll} characters={characters} onRouteLoot={onRouteLoot} onClear={() => setLootRoll(null)} />}
+        </section>
+      )}
 
       {ghost && (() => {
         const c = byId(ghost.id)!
@@ -411,6 +441,30 @@ export default function Battle({ encounter, setEncounter, characters, onSpendSlo
   )
 }
 
+function LootOutcome({ roll, characters, onRouteLoot, onClear }: {
+  roll: { name: string; items: Item[]; text: string }
+  characters: Character[]
+  onRouteLoot?: (items: Item[], target: { kind: 'chest' } | { kind: 'player'; charId: string }) => void
+  onClear: () => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => { ref.current?.scrollIntoView({ block: 'nearest' }) }, [roll.text])
+  return (
+    <div ref={ref} className={'loot-result ' + (roll.items.length ? 'hit' : 'miss')}>
+      <b>{roll.items.length ? 'Hit' : 'Miss'}</b>
+      <div className="small">{roll.text}</div>
+      {roll.items.length > 0 && (
+        <div className="row wrap">
+          <button className="btn sm" onClick={() => { onRouteLoot?.(roll.items, { kind: 'chest' }); onClear() }}>Into chest</button>
+          {characters.map((c) => (
+            <button key={c.id} className="btn sm" onClick={() => { roll.items.forEach((it) => onRouteLoot?.([it], { kind: 'player', charId: c.id })); onClear() }}>Give to <WhoName id={c.id} name={c.name} /></button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const SHORT: Record<string, string> = { resistance: 'RES', vulnerability: 'VULN', immunity: 'IMM', advantage: 'ADV', disadvantage: 'DIS', custom: 'NOTE' }
 const baseName = (n: string) => n.replace(/\s+\d+$/, '')
 function nextName(all: Combatant[], base: string) {
@@ -419,11 +473,11 @@ function nextName(all: Combatant[], base: string) {
 }
 
 // ---------------- Card ----------------
-function CombatantCard({ c, armorItem, effects = [], portrait, isTurn, isSelected, isOver, isDragging, flash, onPointerDown, onHandleDown, onTap, onHp, onMenu }: {
+function CombatantCard({ c, armorItem, effects = [], portrait, isTurn, isSelected, isOver, isDragging, flash, onPointerDown, onHandleDown, onTap, onHp, onMenu, onRemove }: {
   c: Combatant; armorItem?: import('../types').Item; effects?: import('../types').ActiveEffect[]; portrait?: string; isTurn: boolean; isSelected: boolean; isOver: boolean; isDragging: boolean
   flash: { text: string; kind: string; key: number } | null
   onPointerDown: (e: React.PointerEvent) => void; onHandleDown: (e: React.PointerEvent) => void
-  onTap: () => void; onHp: () => void; onMenu: () => void
+  onTap: () => void; onHp: () => void; onMenu: () => void; onRemove?: () => void
 }) {
   const pct = c.maxHp ? Math.max(0, Math.min(100, (c.hp / c.maxHp) * 100)) : 0
   const out = isOut(c)
@@ -471,6 +525,7 @@ function CombatantCard({ c, armorItem, effects = [], portrait, isTurn, isSelecte
         <button className="icon-btn sm" onClick={(e) => { e.stopPropagation(); onMenu() }} onPointerDown={(e) => e.stopPropagation()} aria-label="Edit">⋯</button>
         <button className="drag-handle" onPointerDown={onHandleDown} onClick={(e) => e.stopPropagation()} aria-label="Drag to attack">⚔</button>
       </div>
+      {onRemove && <button className="btn sm danger ccard-remove" onClick={(e) => { e.stopPropagation(); onRemove() }} onPointerDown={(e) => e.stopPropagation()} aria-label={`Remove ${c.name}`}>Remove</button>}
       {flash && <div key={flash.key} className={'float-num ' + flash.kind}>{flash.text}</div>}
     </div>
   )

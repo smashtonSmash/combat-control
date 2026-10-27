@@ -112,6 +112,9 @@ h1, h2, h3, h4 { font-family: var(--serif); color: var(--gold2); letter-spacing:
 .col-head { display: flex; justify-content: space-between; align-items: center; font-family: var(--serif); font-weight: 800; font-size: 14px; padding: 4px 4px 4px 8px; border-radius: 10px; }
 .col-head.party { color: #9cc6f5; background: linear-gradient(90deg, rgba(79,143,214,.18), transparent); }
 .col-head.monster { color: #f2a090; background: linear-gradient(90deg, rgba(208,83,63,.18), transparent); }
+.ccard-remove { width: 100%; margin-top: 8px; }
+.quick-roll-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.quick-roll { flex: 1 1 calc(33% - 8px); font-weight: 800; background: #120f0c; }
 
 .ccard { position: relative; background: linear-gradient(180deg, var(--card2), var(--card)); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 9px 8px; box-shadow: var(--shadow);
   touch-action: pan-y; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; transition: transform .18s, box-shadow .18s, border-color .18s, opacity .3s, filter .3s; }
@@ -180,7 +183,8 @@ h1, h2, h3, h4 { font-family: var(--serif); color: var(--gold2); letter-spacing:
 .sheet-grip { width: 44px; height: 5px; border-radius: 4px; background: var(--line); margin: 8px auto 0; }
 .sheet-head { display: flex; align-items: center; gap: 8px; padding: 6px 14px 8px; border-bottom: 1px solid var(--line); }
 .sheet-title { flex: 1; font-family: var(--serif); font-weight: 800; font-size: 17px; color: var(--gold2); min-width: 0; }
-.sheet-body { flex: 1; overflow-y: auto; padding: 10px 14px 20px; -webkit-overflow-scrolling: touch; }
+.sheet-body { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 14px 20px; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
+.sheet-body .item-card { touch-action: pan-y; }
 .sheet-foot { padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: #1c1813; }
 .sheet-foot .row { margin: 0; flex-wrap: nowrap; }
 
@@ -752,9 +756,9 @@ b.bad{color:#f66} b.warn,.warn{color:#f0b84a}
 /* Tap flash when a starting item is added, and the level-up celebration. */
 html.add-flash::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:100;background:rgba(255,244,214,.55);animation:add-flash 200ms ease-out forwards}
 @keyframes add-flash{from{opacity:1}to{opacity:0}}
-.level-burst{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;pointer-events:none;background:radial-gradient(circle,rgba(240,213,138,.45),transparent 60%);animation:level-pop 1.4s ease-out forwards}
-.level-burst b{font-size:64px;color:#f0d58a;text-shadow:0 0 24px #f08a2a}
-@keyframes level-pop{0%{opacity:0}15%{opacity:1}100%{opacity:0}}
+.level-burst{position:fixed;left:12px;right:12px;bottom:22vh;z-index:80;display:flex;align-items:flex-end;justify-content:center;pointer-events:none;animation:level-pop 3.2s ease-out forwards}
+.level-burst b{font-size:clamp(32px, 8vw, 48px);line-height:1.15;text-align:center;color:#f0d58a;text-shadow:0 0 18px #f08a2a;padding:10px 16px;border-radius:16px;background:rgba(22,16,10,.72);border:1px solid rgba(240,213,138,.55)}
+@keyframes level-pop{0%{opacity:0;transform:translateY(16px)}10%{opacity:1;transform:none}78%{opacity:1}100%{opacity:0}}
 @media (prefers-reduced-motion:reduce){html.add-flash::before,.level-burst{animation:none}}
 
 .vault-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
