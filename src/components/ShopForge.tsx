@@ -6,13 +6,14 @@ import { upgradeFeeFor, upgradeGear, craftGear, craftRepairKit, mergeMats, salva
 import { blacksmithRepair, buy, fmtCost, forgeReady } from '../effects'
 import { isBroken, missing, repairCost, durOf, maxDur } from '../durability'
 import { DurBar } from './DurBar'
-import { armorItem } from '../inventory'
+import { KIND_ICON, armorItem } from '../inventory'
+import { itemArtSrc } from '../itemArt'
 import { WEAPON_CATALOG, tieredWeapon, weaponPrice } from '../weapons'
 import { SHIELD_CATALOG, shieldItem, shieldPrice, shieldRules } from '../shields'
 import { MAT_COLORS, MAT_LABELS, MAT_TIERS, MAT_TO_GEAR, materialTier, matQty, salvageYield, repairKitItem } from '../salvage'
 import { allMerchants, favorAdjust, favorFace, favorOf, merchantById, clampFavor, refusesToSell, type Merchant } from '../favor'
 import type { RecapKind } from '../recap'
-import { ConsumablePicker } from './Items'
+import { ConsumablePicker, ItemArt } from './Items'
 import { Segmented, Stepper } from './Sheet'
 import { WhoName } from './PlayerName'
 
@@ -90,7 +91,7 @@ export function ShopForge({ characters, onSave, onRecap, merchants = [], removed
               <div className="chips-row wrap">{WEAPON_CATALOG.map((w) => <button key={w.id} className={'chip ' + (weaponId === w.id ? 'on' : '')} onClick={() => setWeaponId(w.id)}>{w.name} <small>{w.size}</small></button>)}</div>
               {TIERS.map((t) => (
                 <button key={t} className="cp-row" style={{ ['--tier' as string]: TIER_COLORS[t] }} onClick={() => sell(tieredWeapon(weaponId, t), weaponPrice(t))}>
-                  <span className="cp-icon">⚔️</span><span className="cp-main"><b style={{ color: TIER_COLORS[t] }}>{TIER_SHORT[t]} {WEAPON_CATALOG.find((w) => w.id === weaponId)?.name}</b><small>{WEAPON_CATALOG.find((w) => w.id === weaponId)?.damage} · {WEAPON_CATALOG.find((w) => w.id === weaponId)?.size}</small></span>
+                  <span className="cp-icon"><ItemArt src={itemArtSrc({ name: '', kind: 'weapon', weaponId, tier: t })} fallback={KIND_ICON.weapon} /></span><span className="cp-main"><b style={{ color: TIER_COLORS[t] }}>{TIER_SHORT[t]} {WEAPON_CATALOG.find((w) => w.id === weaponId)?.name}</b><small>{WEAPON_CATALOG.find((w) => w.id === weaponId)?.damage} · {WEAPON_CATALOG.find((w) => w.id === weaponId)?.size}</small></span>
                   <span className="cp-price">{fmtCost(shopPriceSilver(weaponPrice(t), adjust))}</span>
                 </button>
               ))}
@@ -108,7 +109,7 @@ export function ShopForge({ characters, onSave, onRecap, merchants = [], removed
                 const def = ARMOR_CATALOG.find((a) => a.id === armorId)
                 return (
                   <button key={t} className="cp-row" style={{ ['--tier' as string]: TIER_COLORS[t] }} onClick={() => sell(armorItem(armorId, t), armorPrice(armorId, t))}>
-                    <span className="cp-icon">🛡</span>
+                    <span className="cp-icon"><ItemArt src={itemArtSrc({ name: def?.name ?? '', kind: 'armor', armorId, tier: t })} fallback={KIND_ICON.armor} /></span>
                     <span className="cp-main"><b style={{ color: TIER_COLORS[t] }}>{TIER_SHORT[t]} {def?.name} Armor</b><small>{def?.category} · {def?.focus}</small></span>
                     <span className="cp-price">{fmtCost(shopPriceSilver(armorPrice(armorId, t), adjust))}</span>
                   </button>
@@ -123,7 +124,7 @@ export function ShopForge({ characters, onSave, onRecap, merchants = [], removed
                 const def = SHIELD_CATALOG.find((s) => s.id === shieldId)!
                 return (
                   <button key={t} className="cp-row" style={{ ['--tier' as string]: TIER_COLORS[t] }} onClick={() => sell(shieldItem(shieldId, t), shieldPrice(shieldId, t))}>
-                    <span className="cp-icon">🛡️</span>
+                    <span className="cp-icon"><ItemArt src={itemArtSrc({ name: def.name, kind: 'shield', shieldId, tier: t })} fallback={KIND_ICON.shield} /></span>
                     <span className="cp-main"><b style={{ color: TIER_COLORS[t] }}>{TIER_SHORT[t]} {def.name}</b><small>{shieldRules(def, t)[0]}</small></span>
                     <span className="cp-price">{fmtCost(shopPriceSilver(shieldPrice(shieldId, t), adjust))}</span>
                   </button>
@@ -136,7 +137,7 @@ export function ShopForge({ characters, onSave, onRecap, merchants = [], removed
               <div className="small muted">Kits restore durability. They cannot fix Broken gear.</div>
               {TIERS.map((t) => (
                 <button key={t} className="cp-row" style={{ ['--tier' as string]: TIER_COLORS[t] }} onClick={() => sell(repairKitItem(t), KIT_PRICES[t])}>
-                  <span className="cp-icon">🧰</span>
+                  <span className="cp-icon"><ItemArt src={itemArtSrc({ name: `${TIER_SHORT[t]} Repair Kit`, kind: 'consumable', tier: t, kitTier: t })} fallback="🧰" /></span>
                   <span className="cp-main"><b style={{ color: TIER_COLORS[t] }}>{TIER_SHORT[t]} Repair Kit</b></span>
                   <span className="cp-price">{fmtCost(shopPriceSilver(KIT_PRICES[t], adjust))}</span>
                 </button>

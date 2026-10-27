@@ -171,13 +171,19 @@ export function ConsumablePicker({ onAdd, priceLabel }: { onAdd: (it: Item) => v
           <div key={t} className="cp-tier">
             <div className="cp-tier-head" style={{ color: TIER_COLORS[t] }}>◆ {TIER_SHORT[t]}</div>
             {list.length === 0 && <div className="small muted">None yet.</div>}
-            {list.map((c) => (
-              <button key={c.key} className="cp-row" style={{ ['--tier' as string]: TIER_COLORS[t] }} onClick={() => onAdd(catalogToItem(c))}>
-                <span className="cp-icon">{c.type === 'scroll' ? '📜' : '🧪'}</span>
-                <span className="cp-main"><b>{displayName(c)}</b><small>{c.desc}</small></span>
-                <span className="cp-price">{priceLabel ? priceLabel(c.price) : `${c.price}g`}</span>
-              </button>
-            ))}
+            {list.map((c) => {
+              const art = itemArtSrc({
+                name: displayName(c), kind: c.type === 'scroll' ? 'scroll' : 'consumable', tier: c.tier, catalogKey: c.key,
+                ...(c.effect.kind === 'heal' ? { heal: c.effect.dice } : {}),
+              })
+              return (
+                <button key={c.key} className="cp-row" style={{ ['--tier' as string]: TIER_COLORS[t] }} onClick={() => onAdd(catalogToItem(c))}>
+                  <span className="cp-icon"><ItemArt src={art} fallback={KIND_ICON[c.type === 'scroll' ? 'scroll' : 'consumable']} /></span>
+                  <span className="cp-main"><b>{displayName(c)}</b><small>{c.desc}</small></span>
+                  <span className="cp-price">{priceLabel ? priceLabel(c.price) : `${c.price}g`}</span>
+                </button>
+              )
+            })}
           </div>
         )
       })}
