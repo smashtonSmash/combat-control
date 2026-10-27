@@ -8,6 +8,9 @@ import { Sheet } from './Sheet'
 
 type Method = 'roll' | 'typed' | 'average'
 
+/** Long enough to read "Name · level N" without sitting on top of the sheet. */
+const LEVEL_BURST_MS = 3200
+
 interface Row {
   id: string
   method: Method
@@ -68,7 +71,7 @@ export function LevelUpSheet({ characters, pick, focusId, onClose, onSave }: {
     setDone(next)
     const label = next.length === 1 ? `${next[0].name || 'Character'} · level ${next[0].level}` : `${next.length} characters`
     setBurst(label)
-    window.setTimeout(() => { setBurst(null); setStep('check') }, 1500)
+    window.setTimeout(() => { setBurst(null); setStep('check') }, LEVEL_BURST_MS)
   }
 
   return (
@@ -164,7 +167,7 @@ export function LevelUpSheet({ characters, pick, focusId, onClose, onSave }: {
         </>
       )}
       {burst && createPortal(
-        <div className="level-burst" role="status"><b>{burst}</b></div>,
+        <div className="level-burst" style={{ animationDuration: `${LEVEL_BURST_MS}ms` }} role="status"><b>{burst}</b></div>,
         document.body,
       )}
     </Sheet>
